@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Attendance Tracker — Smart Attendance & Timetable Manager for Android</title>
+    <meta name="description" content="Never risk short attendance again. Attendance Tracker is a modern Android app for weekly timetables, 5 PM auto-confirmations, target safety calculations, and offline privacy.">
+    <meta name="theme-color" content="#07070B">
+    
+    <!-- Open Graph / Social Media -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Attendance Tracker — Smart Attendance Manager">
+    <meta property="og:description" content="Track timetables, auto-confirm 5 PM attendance, and calculate safety margins with zero cloud tracking.">
+    <meta property="og:image" content="assets/screenshot_home.jpg">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Stylesheet -->
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Background Ambient Glows -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <!-- Navigation Bar -->
+    <header class="navbar-container">
+        <nav class="navbar glass">
+            <a href="#" class="brand">
+                <div class="brand-icon">
+                    <i class="fa-solid fa-calendar-check"></i>
+                </div>
+                <div class="brand-text">
+                    <span class="brand-name">Attendance Tracker</span>
+                    <span class="brand-badge">v1.0.0 ALPHA</span>
+                </div>
+            </a>
+            
+            <ul class="nav-links">
+                <li><a href="#features">Features</a></li>
+                <li><a href="#screenshots">App Preview</a></li>
+                <li><a href="#why-app">Why This App</a></li>
+                <li><a href="#download">Download</a></li>
+            </ul>
+
+            <div class="nav-cta">
+                <a href="https://github.com/tanishkadamba01/attendancetracker/releases/download/Alpha/Attendancetracker-v1.0.0-alpha.apk" class="btn btn-nav">
+                    <i class="fa-brands fa-android"></i> Download APK
+                </a>
+            </div>
+
+            <button class="mobile-toggle" id="mobileMenuBtn" aria-label="Toggle Navigation">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+        </nav>
+
+        <!-- Mobile Drawer -->
+        <div class="mobile-menu glass" id="mobileMenu">
+            <a href="#features" class="mobile-link">Features</a>
+            <a href="#screenshots" class="mobile-link">App Preview</a>
+            <a href="#why-app" class="mobile-link">Why This App</a>
+            <a href="#download" class="mobile-link">Download</a>
+            <a href="https://github.com/tanishkadamba01/attendancetracker/releases/download/Alpha/Attendancetracker-v1.0.0-alpha.apk" class="btn btn-primary btn-full">
+                <i class="fa-brands fa-android"></i> Download v1.0.0 Alpha APK
+            </a>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="container hero-container">
+            <div class="hero-content">
+                <div class="hero-badge">
+                    <span class="badge-dot"></span>
+                    <span>NEW: Class Start Date Control & Safety Calculator</span>
+                </div>
+                
+                <h1 class="hero-title">
+                    Never Risk Short <span class="text-gradient">Attendance</span> Again.
+                </h1>
+                
+                <p class="hero-subtitle">
+                    The modern, fluid Android companion for student timetables. Automatically confirms attendance at 5:00 PM, calculates safe skip margins, and operates 100% offline.
+                </p>
+
+                <div class="hero-actions">
+                    <a href="https://github.com/tanishkadamba01/attendancetracker/releases/download/Alpha/Attendancetracker-v1.0.0-alpha.apk" class="btn btn-hero btn-primary glow-button">
+                        <i class="fa-brands fa-android"></i>
+                        <div class="btn-text-group">
+                            <span class="btn-label">Download Alpha APK</span>
+                            <span class="btn-subtext">Direct v1.0.0 Release (Free)</span>
+                        </div>
+                    </a>
+                    
+                    <a href="#features" class="btn btn-hero btn-secondary">
+                        <span>Explore Features</span>
+                        <i class="fa-solid fa-arrow-down"></i>
+                    </a>
+                </div>
+
+                <div class="hero-metrics">
+                    <div class="metric-item">
+                        <i class="fa-solid fa-shield-halved text-mint"></i>
+                        <span>100% Offline & Private</span>
+                    </div>
+                    <div class="metric-divider"></div>
+                    <div class="metric-item">
+                        <i class="fa-solid fa-bolt text-purple"></i>
+                        <span>5 PM Auto-Confirm</span>
+                    </div>
+                    <div class="metric-divider"></div>
+                    <div class="metric-item">
+                        <i class="fa-solid fa-file-code text-indigo"></i>
+                        <span>AI Timetable JSON Import</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Hero Phone Mockup -->
+            <div class="hero-visual">
+                <div class="phone-wrapper tilt-card" id="heroPhone">
+                    <div class="phone-frame">
+                        <div class="phone-notch"></div>
+                        <img src="assets/screenshot_home.jpg" alt="Attendance Tracker Home Screen" class="phone-screen">
+                    </div>
+
+                    <!-- Floating Badges -->
+                    <div class="floating-card float-1 glass">
+                        <div class="badge-icon bg-mint"><i class="fa-solid fa-check"></i></div>
+                        <div>
+                            <div class="card-title">100% Target Met</div>
+                            <div class="card-subtitle">COA • Can miss 1 class</div>
+                        </div>
+                    </div>
+
+                    <div class="floating-card float-2 glass">
+                        <div class="badge-icon bg-purple"><i class="fa-solid fa-clock"></i></div>
+                        <div>
+                            <div class="card-title">5:00 PM Auto Mark</div>
+                            <div class="card-subtitle">Confirmed as Attended</div>
+                        </div>
+                    </div>
+
+                    <div class="floating-card float-3 glass">
+                        <div class="badge-icon bg-coral"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                        <div>
+                            <div class="card-title">Attendance Warning</div>
+                            <div class="card-subtitle">Attend 5 classes to reach 85%</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section" id="features">
+        <div class="container">
+            <div class="section-header center">
+                <span class="section-tag">ENGINEERED FOR STUDENTS</span>
+                <h2 class="section-title">Everything You Need To Maintain 85%+</h2>
+                <p class="section-subtitle">Designed to remove the friction of manual class tracking while keeping your schedule perfectly organized.</p>
+            </div>
+
+            <div class="features-grid">
+                <!-- Feature 1 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-purple">
+                        <i class="fa-solid fa-calendar-day"></i>
+                    </div>
+                    <h3>Class Start Date Logic</h3>
+                    <p>Set your exact semester start day. Attendance tracking and 5 PM auto-confirmations only run from day 1, keeping past weeks clean.</p>
+                    <span class="card-badge">New in Alpha</span>
+                </div>
+
+                <!-- Feature 2 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-mint">
+                        <i class="fa-solid fa-clock"></i>
+                    </div>
+                    <h3>5:00 PM Auto-Confirm</h3>
+                    <p>No need to manually tap every single class. Classes automatically confirm as attended after 5 PM unless you mark them missed.</p>
+                </div>
+
+                <!-- Feature 3 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-indigo">
+                        <i class="fa-solid fa-chart-pie"></i>
+                    </div>
+                    <h3>Target Safety Calculator</h3>
+                    <p>Instant safety metrics. Know exactly how many consecutive classes you must attend—or can safely skip—to stay above 85%.</p>
+                </div>
+
+                <!-- Feature 4 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-amber">
+                        <i class="fa-solid fa-shuffle"></i>
+                    </div>
+                    <h3>Class Reassignment & Overrides</h3>
+                    <p>Mark proxy lectures or extra substitute classes taken by another subject without messing up your weekly schedule.</p>
+                </div>
+
+                <!-- Feature 5 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-coral">
+                        <i class="fa-solid fa-file-import"></i>
+                    </div>
+                    <h3>AI JSON Timetable Import</h3>
+                    <p>Import full weekly schedules instantly via AI-generated JSON or export your timetable to share with classmates.</p>
+                </div>
+
+                <!-- Feature 6 -->
+                <div class="feature-card glass hover-lift">
+                    <div class="feature-icon bg-gradient-dark">
+                        <i class="fa-solid fa-moon"></i>
+                    </div>
+                    <h3>Pure AMOLED Dark Mode</h3>
+                    <p>Built with Jetpack Compose featuring AMOLED true black, standard Dark mode, and Light mode with rich color accents.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- App Preview / Screenshots Section -->
+    <section class="preview-section" id="screenshots">
+        <div class="container">
+            <div class="section-header center">
+                <span class="section-tag">INTERFACE PREVIEW</span>
+                <h2 class="section-title">Designed to Look & Feel Premium</h2>
+                <p class="section-subtitle">Explore the clean, intuitive screens crafted with Jetpack Compose & Material 3 guidelines.</p>
+            </div>
+
+            <!-- Tab Navigation for Screenshots -->
+            <div class="preview-tabs">
+                <button class="tab-btn active" data-target="tab-home">
+                    <i class="fa-solid fa-house"></i> Home & Daily Schedule
+                </button>
+                <button class="tab-btn" data-target="tab-schedule">
+                    <i class="fa-solid fa-calendar-week"></i> Timetable & Start Date
+                </button>
+                <button class="tab-btn" data-target="tab-stats">
+                    <i class="fa-solid fa-chart-column"></i> Subject Analytics
+                </button>
+            </div>
+
+            <!-- Showcase Gallery Container -->
+            <div class="preview-showcase glass">
+                <div class="showcase-content">
+                    
+                    <!-- Tab 1: Home Screen -->
+                    <div class="showcase-panel active" id="tab-home">
+                        <div class="panel-info">
+                            <span class="panel-badge">HOME TAB</span>
+                            <h3>7-Day Week Slider & Quick Actions</h3>
+                            <p>Select any day in your start week. View live stats circles, toggle missed classes, or reassign proxy lectures instantly.</p>
+                            <ul class="panel-bullets">
+                                <li><i class="fa-solid fa-circle-check text-mint"></i> Week slider anchored to Class Start Date</li>
+                                <li><i class="fa-solid fa-circle-check text-mint"></i> One-tap <i>Missed Class</i> toggle</li>
+                                <li><i class="fa-solid fa-circle-check text-mint"></i> Auto 5 PM confirmation status badges</li>
+                            </ul>
+                        </div>
+                        <div class="panel-image">
+                            <div class="mockup-frame">
+                                <img src="assets/screenshot_home.jpg" alt="Home Screen Preview">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Schedule Screen -->
+                    <div class="showcase-panel" id="tab-schedule">
+                        <div class="panel-info">
+                            <span class="panel-badge">SCHEDULE TAB</span>
+                            <h3>Weekly Timetable & Class Start Date</h3>
+                            <p>Organize your weekly slots per subject with color chips. Set or edit your semester start date anytime with the top banner.</p>
+                            <ul class="panel-bullets">
+                                <li><i class="fa-solid fa-circle-check text-purple"></i> Top Class Start Date configuration chip</li>
+                                <li><i class="fa-solid fa-circle-check text-purple"></i> Subject color palette selector</li>
+                                <li><i class="fa-solid fa-circle-check text-purple"></i> Export / Import AI JSON Timetable buttons</li>
+                            </ul>
+                        </div>
+                        <div class="panel-image">
+                            <div class="mockup-frame">
+                                <img src="assets/screenshot_schedule.jpg" alt="Schedule Screen Preview">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 3: Stats Screen -->
+                    <div class="showcase-panel" id="tab-stats">
+                        <div class="panel-info">
+                            <span class="panel-badge">STATS TAB</span>
+                            <h3>Subject Performance & Safety Alerts</h3>
+                            <p>Get exact calculations for how many classes to attend to reach 85% target or how many classes you can safely skip.</p>
+                            <ul class="panel-bullets">
+                                <li><i class="fa-solid fa-circle-check text-indigo"></i> Real-time subject percentage bars</li>
+                                <li><i class="fa-solid fa-circle-check text-indigo"></i> Safe-to-skip class counter</li>
+                                <li><i class="fa-solid fa-circle-check text-indigo"></i> Alert banners for low attendance subjects</li>
+                            </ul>
+                        </div>
+                        <div class="panel-image">
+                            <div class="mockup-frame">
+                                <img src="assets/screenshot_stats.jpg" alt="Subject Statistics Preview">
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Why This App Section -->
+    <section class="why-section" id="why-app">
+        <div class="container">
+            <div class="section-header center">
+                <span class="section-tag">THE STUDENT ADVANTAGE</span>
+                <h2 class="section-title">Why Ditch Excel & Paper Spreadsheets?</h2>
+                <p class="section-subtitle">Built to eliminate attendance anxiety with smart automation and total privacy.</p>
+            </div>
+
+            <div class="comparison-container glass">
+                <div class="comparison-col old-way">
+                    <div class="col-header">
+                        <i class="fa-solid fa-xmark text-coral"></i>
+                        <h3>Traditional Spreadsheets</h3>
+                    </div>
+                    <ul class="comparison-list">
+                        <li><i class="fa-solid fa-minus text-coral"></i> Manual entry every single day</li>
+                        <li><i class="fa-solid fa-minus text-coral"></i> Easy to forget logging after lectures</li>
+                        <li><i class="fa-solid fa-minus text-coral"></i> Complex formulas needed to calculate safe skips</li>
+                        <li><i class="fa-solid fa-minus text-coral"></i> Clunky mobile interface and formatting errors</li>
+                        <li><i class="fa-solid fa-minus text-coral"></i> Messes up calculations for proxy classes</li>
+                    </ul>
+                </div>
+
+                <div class="comparison-vs">VS</div>
+
+                <div class="comparison-col new-way">
+                    <div class="col-header">
+                        <i class="fa-solid fa-check text-mint"></i>
+                        <h3>Attendance Tracker App</h3>
+                    </div>
+                    <ul class="comparison-list">
+                        <li><i class="fa-solid fa-check text-mint"></i> 5:00 PM auto-confirm handles daily logging</li>
+                        <li><i class="fa-solid fa-check text-mint"></i> Automatic safe-to-skip & required class counts</li>
+                        <li><i class="fa-solid fa-check text-mint"></i> Class Start Date logic ignores pre-semester dates</li>
+                        <li><i class="fa-solid fa-check text-mint"></i> One-tap substitute class reassignments</li>
+                        <li><i class="fa-solid fa-check text-mint"></i> 100% offline, zero accounts, zero privacy risks</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Download Section -->
+    <section class="download-section" id="download">
+        <div class="container">
+            <div class="download-box glass">
+                <div class="download-glow"></div>
+                <div class="download-badge">OFFICIAL RELEASE</div>
+                <h2 class="download-title">Ready To Automate Your Attendance?</h2>
+                <p class="download-subtitle">Download Attendance Tracker v1.0.0 Alpha directly for your Android device. Free forever & 100% open source.</p>
+
+                <div class="download-actions">
+                    <a href="https://github.com/tanishkadamba01/attendancetracker/releases/download/Alpha/Attendancetracker-v1.0.0-alpha.apk" class="btn btn-download glow-button">
+                        <i class="fa-brands fa-android"></i>
+                        <span>Download v1.0.0 Alpha APK</span>
+                    </a>
+                </div>
+
+                <div class="download-meta">
+                    <span><i class="fa-solid fa-mobile-screen"></i> Android 7.0+ (API 24+)</span>
+                    <span><i class="fa-solid fa-code"></i> Open Source on GitHub</span>
+                    <span><i class="fa-solid fa-lock"></i> 100% Offline Data Storage</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-container">
+            <div class="footer-brand">
+                <div class="brand">
+                    <div class="brand-icon">
+                        <i class="fa-solid fa-calendar-check"></i>
+                    </div>
+                    <span class="brand-name">Attendance Tracker</span>
+                </div>
+                <p class="footer-tagline">Empowering students with smart attendance automation and clean schedule tracking.</p>
+            </div>
+
+            <div class="footer-links">
+                <div class="footer-col">
+                    <h4>Navigation</h4>
+                    <ul>
+                        <li><a href="#features">Features</a></li>
+                        <li><a href="#screenshots">App Preview</a></li>
+                        <li><a href="#why-app">Why Attendance Tracker</a></li>
+                        <li><a href="#download">Download APK</a></li>
+                    </ul>
+                </div>
+
+                <div class="footer-col">
+                    <h4>Project & Source</h4>
+                    <ul>
+                        <li><a href="https://github.com/tanishkadamba01/attendancetracker" target="_blank" rel="noopener"><i class="fa-brands fa-github"></i> GitHub Repository</a></li>
+                        <li><a href="https://github.com/tanishkadamba01/attendancetracker/releases" target="_blank" rel="noopener"><i class="fa-solid fa-tag"></i> GitHub Releases</a></li>
+                        <li><a href="https://github.com/tanishkadamba01/attendancetracker/blob/main/README.md" target="_blank" rel="noopener"><i class="fa-solid fa-book"></i> Documentation</a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="footer-bottom">
+            <div class="container footer-bottom-inner">
+                <p>© 2026 Attendance Tracker App. Built with Jetpack Compose & Room for Android.</p>
+                <div class="footer-badges">
+                    <span class="status-pill"><span class="pulse-dot"></span> Alpha v1.0.0 Live</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- JavaScript -->
+    <script src="script.js"></script>
+</body>
+</html>
