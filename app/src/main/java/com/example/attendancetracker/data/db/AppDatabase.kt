@@ -5,6 +5,8 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import android.content.Context
 import com.example.attendancetracker.data.model.AttendanceRecord
 import com.example.attendancetracker.data.model.AttendanceStatus
@@ -19,9 +21,17 @@ class AttendanceConverters {
     fun toStatus(value: String): AttendanceStatus = AttendanceStatus.valueOf(value)
 }
 
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        database.execSQL(
+            "ALTER TABLE timetable_slots ADD COLUMN room TEXT NOT NULL DEFAULT ''"
+        )
+    }
+}
+
 @Database(
     entities = [Subject::class, TimetableSlot::class, AttendanceRecord::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(AttendanceConverters::class)
@@ -40,7 +50,8 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "attendance_db"
                 )
-                .fallbackToDestructiveMigration()
+                .addMigrations(MIGRATION_3_4)
+                .fallbackToDestructiveMigration(true)
                 .build()
                 INSTANCE = instance
                 instance

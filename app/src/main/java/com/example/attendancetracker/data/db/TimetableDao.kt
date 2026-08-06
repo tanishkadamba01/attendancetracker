@@ -15,6 +15,9 @@ interface TimetableDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSlot(slot: TimetableSlot): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllSlots(slots: List<TimetableSlot>)
+
     @Delete
     suspend fun deleteSlot(slot: TimetableSlot)
 
@@ -23,4 +26,7 @@ interface TimetableDao {
 
     @Query("DELETE FROM timetable_slots")
     suspend fun deleteAllSlots()
+
+    @Query("SELECT * FROM timetable_slots WHERE dayOfWeek = :day AND id != :excludeId ORDER BY startTime ASC")
+    suspend fun getSlotsForDayExcluding(day: Int, excludeId: Int): List<TimetableSlot>
 }

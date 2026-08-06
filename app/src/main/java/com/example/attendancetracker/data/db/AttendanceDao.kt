@@ -19,6 +19,9 @@ interface AttendanceDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRecord(record: AttendanceRecord)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllRecords(records: List<AttendanceRecord>)
+
     @Query("SELECT COUNT(*) FROM attendance_records WHERE status = 'PRESENT'")
     fun getAttendedClasses(): Flow<Int>
 
@@ -27,4 +30,7 @@ interface AttendanceDao {
 
     @Delete
     suspend fun deleteRecord(record: AttendanceRecord)
+
+    @Query("DELETE FROM attendance_records")
+    suspend fun deleteAllRecords()
 }

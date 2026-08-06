@@ -1,6 +1,9 @@
 package com.example.attendancetracker.ui.settings
 
+import android.content.Intent
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +24,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.FileDownload
+import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Schedule
@@ -29,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -44,6 +50,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,9 +67,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.attendancetracker.data.backup.BackupSerializer
 import com.example.attendancetracker.data.local.AppThemeMode
 import com.example.attendancetracker.theme.Coral
 import com.example.attendancetracker.theme.Indigo60
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -72,13 +81,68 @@ fun SettingsScreen(
 ) {
     val vm: SettingsViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val isBackupInProgress by vm.isBackupInProgress.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
 
     var showResetDialog     by remember { mutableStateOf(false) }
     var showPrivacyDialog   by remember { mutableStateOf(false) }
     var showTermsDialog     by remember { mutableStateOf(false) }
     var showAboutDialog     by remember { mutableStateOf(false) }
+
+    // Parsed backup awaiting user confirmation for replace
+    var pendingImportData   by remember { mutableStateOf<BackupSerializer.BackupData?>(null) }
+    var showImportConfirmDialog by remember { mutableStateOf(false) }
+
+    // ── File Picker Launchers ─────────────────────────────────────────────────
+
+    // Export: system file picker to create/save a new file
+    val exportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.exportToUri(context, uri) { result ->
+            when (result) {
+                is BackupResult.Success -> {
+                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                    // Also offer share sheet
+                    scope.launch {
+                        try {
+                            val json = vm.buildBackupJson()
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "application/json"
+                                putExtra(Intent.EXTRA_TEXT, json)
+                                putExtra(Intent.EXTRA_SUBJECT, "Attendance Tracker Backup")
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share Backup File"))
+                        } catch (e: Exception) { /* share is optional */ }
+                    }
+                }
+                is BackupResult.Error -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Import: system file picker to open an existing file
+    val importLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        vm.readBackupFromUri(context, uri) { parseResult ->
+            when (parseResult) {
+                is BackupSerializer.ParseResult.Success -> {
+                    pendingImportData = parseResult.data
+                    showImportConfirmDialog = true
+                }
+                is BackupSerializer.ParseResult.Error -> {
+                    Toast.makeText(context, parseResult.message, Toast.LENGTH_LONG).show()
+                }
+            }
+        }
+    }
+
+    // ── Dialogs ────────────────────────────────────────────────────────────────
 
     if (showResetDialog) {
         Dialog(onDismissRequest = { showResetDialog = false }) {
@@ -107,6 +171,53 @@ fun SettingsScreen(
                         ) {
                             Text("Reset")
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // Import replace-existing confirmation dialog
+    if (showImportConfirmDialog && pendingImportData != null) {
+        val data = pendingImportData!!
+        Dialog(onDismissRequest = {
+            showImportConfirmDialog = false
+            pendingImportData = null
+        }) {
+            Card(
+                shape  = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("📦 Import Backup?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Indigo60)
+                    Text(
+                        "This backup contains:\n• ${data.subjects.size} subjects\n• ${data.slots.size} class slots\n• ${data.records.size} attendance records\n\nAll existing data will be replaced. This cannot be undone.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(
+                            onClick = {
+                                showImportConfirmDialog = false
+                                pendingImportData = null
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Cancel") }
+                        Button(
+                            onClick = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                showImportConfirmDialog = false
+                                vm.restoreFromBackup(context, data) { result ->
+                                    pendingImportData = null
+                                    when (result) {
+                                        is BackupResult.Success -> Toast.makeText(context, "✅ ${result.message}", Toast.LENGTH_LONG).show()
+                                        is BackupResult.Error   -> Toast.makeText(context, "❌ ${result.message}", Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            colors   = ButtonDefaults.buttonColors(containerColor = Indigo60),
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Replace & Restore") }
                     }
                 }
             }
@@ -145,6 +256,33 @@ fun SettingsScreen(
                     Text("Version 1.0.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text("Built with Jetpack Compose & Room for smart weekly attendance tracking.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
                     Button(onClick = { showAboutDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("OK") }
+                }
+            }
+        }
+    }
+
+    // Progress overlay during backup operations
+    if (isBackupInProgress) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Card(
+                shape  = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Row(
+                    modifier = Modifier.padding(24.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    CircularProgressIndicator(
+                        color    = Indigo60,
+                        modifier = Modifier.size(28.dp)
+                    )
+                    Text("Processing backup…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
                 }
             }
         }
@@ -229,10 +367,56 @@ fun SettingsScreen(
             item {
                 SettingsCategoryCard(title = "Data Management", icon = Icons.Default.SwapVert) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SettingsClickableRow("Export Attendance Data") {
-                            Toast.makeText(context, "Attendance data exported to downloads", Toast.LENGTH_SHORT).show()
+                        // Export
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = !isBackupInProgress) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    exportLauncher.launch(vm.generateBackupFileName())
+                                }
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.FileUpload, contentDescription = null, tint = Indigo60, modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Export Attendance Data", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground)
+                                    Text("Save a full backup to your device", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                         }
+
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
+                        // Import
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = !isBackupInProgress) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    importLauncher.launch(arrayOf("application/json", "*/*"))
+                                }
+                                .padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment     = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Icon(Icons.Default.FileDownload, contentDescription = null, tint = Indigo60, modifier = Modifier.size(20.dp))
+                                Column {
+                                    Text("Import Attendance Data", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onBackground)
+                                    Text("Restore from a backup file", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                            }
+                            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                        }
+
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+
                         SettingsClickableRow("Reset All Data", textColor = Coral) {
                             showResetDialog = true
                         }
@@ -256,6 +440,8 @@ fun SettingsScreen(
                     }
                 }
             }
+
+            item { Spacer(modifier = Modifier.height(16.dp)) }
         }
     }
 }

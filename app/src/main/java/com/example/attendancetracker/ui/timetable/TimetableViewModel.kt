@@ -95,9 +95,43 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
         viewModelScope.launch { repo.deleteSubject(subject) }
     }
 
-    fun addSlot(subjectId: Int, day: Int, startTime: String, endTime: String) {
+    /**
+     * Add a new class slot with overlap validation.
+     * @param onResult callback: success=true with message, or success=false with error message.
+     */
+    fun addSlot(
+        subjectId: Int,
+        day: Int,
+        startTime: String,
+        endTime: String,
+        room: String = "",
+        onResult: ((Boolean, String) -> Unit)? = null
+    ) {
         viewModelScope.launch {
-            repo.insertSlot(TimetableSlot(subjectId = subjectId, dayOfWeek = day, startTime = startTime, endTime = endTime))
+            // Validate end > start
+            try {
+                val start = java.time.LocalTime.parse(startTime)
+                val end   = java.time.LocalTime.parse(endTime)
+                if (!end.isAfter(start)) {
+                    onResult?.invoke(false, "End time must be after start time.")
+                    return@launch
+                }
+            } catch (e: Exception) {
+                onResult?.invoke(false, "Invalid time format.")
+                return@launch
+            }
+
+            // Check for overlaps
+            val overlapping = repo.findOverlappingSlot(day, startTime, endTime)
+            if (overlapping != null) {
+                val subjectName = repo.getSubjectById(overlapping.subjectId)?.name ?: "another class"
+                val dayName = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday").getOrElse(day-1){"day"}
+                onResult?.invoke(false, "⚠️ Conflict on $dayName: overlaps with '$subjectName' (${overlapping.startTime}–${overlapping.endTime})")
+                return@launch
+            }
+
+            repo.insertSlot(TimetableSlot(subjectId = subjectId, dayOfWeek = day, startTime = startTime, endTime = endTime, room = room.trim()))
+            onResult?.invoke(true, "Class slot added!")
         }
     }
 
@@ -135,6 +169,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                 val slotObj = JSONObject()
                 slotObj.put("subject", sub?.name ?: "Unknown")
                 slotObj.put("time", "${slot.startTime}-${slot.endTime}")
+                if (slot.room.isNotBlank()) slotObj.put("room", slot.room)
                 dayArr.put(slotObj)
             }
             timetableObj.put(dayName, dayArr)
@@ -212,12 +247,15 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                                 }
                             }
 
+                            val room = slotItem.optString("room", "")
+
                             repo.insertSlot(
                                 TimetableSlot(
                                     subjectId = subject.id,
                                     dayOfWeek = dayInt,
                                     startTime = startTime,
-                                    endTime   = endTime
+                                    endTime   = endTime,
+                                    room      = room
                                 )
                             )
                             importedSlotsCount++

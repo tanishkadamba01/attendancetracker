@@ -26,6 +26,7 @@ class AttendanceRepository(
     val allSubjects: Flow<List<Subject>> = subjectDao.getAllSubjects()
 
     suspend fun insertSubject(subject: Subject) = subjectDao.insertSubject(subject)
+    suspend fun insertAllSubjects(subjects: List<Subject>) = subjectDao.insertAllSubjects(subjects)
     suspend fun updateSubject(subject: Subject) = subjectDao.updateSubject(subject)
     suspend fun deleteSubject(subject: Subject) = subjectDao.deleteSubject(subject)
     suspend fun getSubjectById(id: Int) = subjectDao.getSubjectById(id)
@@ -36,11 +37,39 @@ class AttendanceRepository(
 
     fun getSlotsForDay(day: Int): Flow<List<TimetableSlot>> = timetableDao.getSlotsForDay(day)
     suspend fun insertSlot(slot: TimetableSlot) = timetableDao.insertSlot(slot)
+    suspend fun insertAllSlots(slots: List<TimetableSlot>) = timetableDao.insertAllSlots(slots)
     suspend fun deleteSlot(slot: TimetableSlot) = timetableDao.deleteSlot(slot)
     suspend fun deleteAllSlots() = timetableDao.deleteAllSlots()
     suspend fun deleteAllSubjects() = subjectDao.deleteAllSubjects()
+    suspend fun deleteAllRecords() = attendanceDao.deleteAllRecords()
+
+    /**
+     * Check if the given time range overlaps with any existing slot on the same day.
+     * @param day 1=Monday…6=Saturday
+     * @param startTime "HH:mm"
+     * @param endTime "HH:mm"
+     * @param excludeSlotId The slot ID to exclude from the check (for edit scenarios). Use -1 if not applicable.
+     * @return The overlapping TimetableSlot, or null if no conflict.
+     */
+    suspend fun findOverlappingSlot(
+        day: Int,
+        startTime: String,
+        endTime: String,
+        excludeSlotId: Int = -1
+    ): TimetableSlot? {
+        val existingSlots = timetableDao.getSlotsForDayExcluding(day, excludeSlotId)
+        val newStart = LocalTime.parse(startTime)
+        val newEnd   = LocalTime.parse(endTime)
+        return existingSlots.firstOrNull { slot ->
+            val existStart = LocalTime.parse(slot.startTime)
+            val existEnd   = LocalTime.parse(slot.endTime)
+            // Overlap: new starts before existing ends AND new ends after existing starts
+            newStart < existEnd && newEnd > existStart
+        }
+    }
 
     suspend fun deleteAllData() {
+        attendanceDao.deleteAllRecords()
         timetableDao.deleteAllSlots()
         subjectDao.deleteAllSubjects()
     }
@@ -52,6 +81,9 @@ class AttendanceRepository(
     fun getAllRecords(): Flow<List<AttendanceRecord>> = attendanceDao.getAllRecords()
 
     suspend fun getRecord(slotId: Int, date: String) = attendanceDao.getRecord(slotId, date)
+
+    suspend fun insertAllRecords(records: List<AttendanceRecord>) =
+        attendanceDao.insertAllRecords(records)
 
     /** Mark slot explicitly as PRESENT, ABSENT (Missed), or REASSIGNED */
     suspend fun markAttendance(

@@ -22,5 +22,6 @@ data class TimetableSlot(
     val subjectId: Int,
     val dayOfWeek: Int,      // 1=Monday … 6=Saturday
     val startTime: String,   // "09:00"
-    val endTime: String      // "10:00"
+    val endTime: String,     // "10:00"
+    val room: String = ""    // Optional room/location, e.g. "Room 204"
 )

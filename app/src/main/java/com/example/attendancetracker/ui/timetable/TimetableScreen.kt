@@ -33,12 +33,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -57,6 +60,9 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TimePicker
+import androidx.compose.material3.TimePickerDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -139,13 +145,15 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
     if (showAddSlotDialog) {
         AddSlotDialog(
-            subjects  = state.allSubjects,
-            day       = state.selectedDay,
-            onDismiss = { showAddSlotDialog = false },
-            onAdd     = { subjectId, day, start, end ->
+            subjects     = state.allSubjects,
+            currentDay   = state.selectedDay,
+            onDismiss    = { showAddSlotDialog = false },
+            onAdd        = { subjectId, day, start, end, room ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                vm.addSlot(subjectId, day, start, end)
-                showAddSlotDialog = false
+                vm.addSlot(subjectId, day, start, end, room) { success, msg ->
+                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                    if (success) showAddSlotDialog = false
+                }
             }
         )
     }
@@ -457,7 +465,7 @@ private fun SlotCard(sws: SlotWithSubject, onDelete: () -> Unit) {
         border   = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
     ) {
         Row(modifier = Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.width(4.dp).height(40.dp).clip(RoundedCornerShape(2.dp)).background(color))
+            Box(modifier = Modifier.width(4.dp).height(48.dp).clip(RoundedCornerShape(2.dp)).background(color))
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
@@ -465,11 +473,25 @@ private fun SlotCard(sws: SlotWithSubject, onDelete: () -> Unit) {
                     fontWeight = FontWeight.SemiBold,
                     color      = MaterialTheme.colorScheme.onBackground
                 )
-                Text(
-                    text  = "${sws.slot.startTime} – ${sws.slot.endTime}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Default.AccessTime, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(12.dp))
+                    Text(
+                        text  = "${sws.slot.startTime} – ${sws.slot.endTime}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (sws.slot.room.isNotBlank()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = color.copy(alpha = 0.7f), modifier = Modifier.size(12.dp))
+                        Text(
+                            text  = sws.slot.room,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = color.copy(alpha = 0.8f),
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
             }
             IconButton(onClick = onDelete) {
                 Icon(Icons.Default.Delete, contentDescription = "Delete slot", tint = Coral.copy(alpha = 0.8f))
@@ -515,6 +537,242 @@ private fun EngagingTimetableEmptyState(day: String, onAddSubject: () -> Unit, o
         }
     }
 }
+
+// ── Time Picker Dialog ────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TimePickerDialog(
+    title: String,
+    initialHour: Int,
+    initialMinute: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (hour: Int, minute: Int) -> Unit
+) {
+    val timePickerState = rememberTimePickerState(
+        initialHour   = initialHour,
+        initialMinute = initialMinute,
+        is24Hour      = true
+    )
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape  = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier            = Modifier.padding(20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                TimePicker(
+                    state  = timePickerState,
+                    colors = TimePickerDefaults.colors(
+                        clockDialColor         = MaterialTheme.colorScheme.surface,
+                        selectorColor          = Indigo60,
+                        timeSelectorSelectedContainerColor   = Indigo60,
+                        timeSelectorUnselectedContainerColor = MaterialTheme.colorScheme.surface,
+                        timeSelectorSelectedContentColor     = Color.White,
+                        timeSelectorUnselectedContentColor   = MaterialTheme.colorScheme.onSurface,
+                        clockDialSelectedContentColor        = Color.White,
+                        clockDialUnselectedContentColor      = MaterialTheme.colorScheme.onSurface,
+                    )
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick  = { onConfirm(timePickerState.hour, timePickerState.minute) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("OK") }
+                }
+            }
+        }
+    }
+}
+
+// ── Add Slot Dialog ───────────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AddSlotDialog(
+    subjects: List<Subject>,
+    currentDay: Int,
+    onDismiss: () -> Unit,
+    onAdd: (subjectId: Int, day: Int, startTime: String, endTime: String, room: String) -> Unit
+) {
+    var selectedSubjectIdx  by remember { mutableIntStateOf(0) }
+    var selectedDay         by remember { mutableIntStateOf(currentDay) }
+    var startHour           by remember { mutableIntStateOf(9) }
+    var startMinute         by remember { mutableIntStateOf(0) }
+    var endHour             by remember { mutableIntStateOf(10) }
+    var endMinute           by remember { mutableIntStateOf(0) }
+    var room                by remember { mutableStateOf("") }
+    var subjectExpanded     by remember { mutableStateOf(false) }
+    var dayExpanded         by remember { mutableStateOf(false) }
+    var showStartPicker     by remember { mutableStateOf(false) }
+    var showEndPicker       by remember { mutableStateOf(false) }
+
+    fun formatTime(h: Int, m: Int) = "%02d:%02d".format(h, m)
+
+    if (showStartPicker) {
+        TimePickerDialog(
+            title         = "Select Start Time",
+            initialHour   = startHour,
+            initialMinute = startMinute,
+            onDismiss     = { showStartPicker = false },
+            onConfirm     = { h, m ->
+                startHour   = h
+                startMinute = m
+                // Auto-bump end time by 1 hour if start >= end
+                val startTotal = h * 60 + m
+                val endTotal   = endHour * 60 + endMinute
+                if (startTotal >= endTotal) {
+                    val newEnd = startTotal + 60
+                    endHour   = (newEnd / 60).coerceAtMost(23)
+                    endMinute = newEnd % 60
+                }
+                showStartPicker = false
+            }
+        )
+    }
+
+    if (showEndPicker) {
+        TimePickerDialog(
+            title         = "Select End Time",
+            initialHour   = endHour,
+            initialMinute = endMinute,
+            onDismiss     = { showEndPicker = false },
+            onConfirm     = { h, m ->
+                endHour   = h
+                endMinute = m
+                showEndPicker = false
+            }
+        )
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
+            Column(modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text("Add Class Slot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+
+                // Subject Dropdown
+                ExposedDropdownMenuBox(expanded = subjectExpanded, onExpandedChange = { subjectExpanded = it }) {
+                    OutlinedTextField(
+                        value       = subjects.getOrNull(selectedSubjectIdx)?.name ?: "",
+                        onValueChange = {},
+                        readOnly    = true,
+                        label       = { Text("Subject") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = subjectExpanded) },
+                        modifier    = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = subjectExpanded, onDismissRequest = { subjectExpanded = false }) {
+                        subjects.forEachIndexed { idx, subject ->
+                            DropdownMenuItem(text = { Text(subject.name) }, onClick = { selectedSubjectIdx = idx; subjectExpanded = false })
+                        }
+                    }
+                }
+
+                // Day Dropdown
+                ExposedDropdownMenuBox(expanded = dayExpanded, onExpandedChange = { dayExpanded = it }) {
+                    OutlinedTextField(
+                        value       = DAY_FULL.getOrElse(selectedDay - 1) { "Monday" },
+                        onValueChange = {},
+                        readOnly    = true,
+                        label       = { Text("Day of Week") },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = dayExpanded) },
+                        modifier    = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth()
+                    )
+                    ExposedDropdownMenu(expanded = dayExpanded, onDismissRequest = { dayExpanded = false }) {
+                        DAY_FULL.forEachIndexed { idx, dayName ->
+                            DropdownMenuItem(text = { Text(dayName) }, onClick = { selectedDay = idx + 1; dayExpanded = false })
+                        }
+                    }
+                }
+
+                // Start & End Time Pickers
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    // Start Time
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("Start Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .clickable { showStartPicker = true }
+                                .padding(horizontal = 12.dp, vertical = 14.dp),
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = Indigo60, modifier = Modifier.size(18.dp))
+                            Text(
+                                formatTime(startHour, startMinute),
+                                style      = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color      = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                    // End Time
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("End Time", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                                .clickable { showEndPicker = true }
+                                .padding(horizontal = 12.dp, vertical = 14.dp),
+                            verticalAlignment     = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(Icons.Default.AccessTime, contentDescription = null, tint = Indigo60, modifier = Modifier.size(18.dp))
+                            Text(
+                                formatTime(endHour, endMinute),
+                                style      = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color      = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
+                    }
+                }
+
+                // Room / Location
+                OutlinedTextField(
+                    value         = room,
+                    onValueChange = { room = it },
+                    label         = { Text("Room / Location (Optional)") },
+                    placeholder   = { Text("e.g. Room 204, Lab A") },
+                    singleLine    = true,
+                    leadingIcon   = { Icon(Icons.Default.LocationOn, contentDescription = null, tint = Indigo60) },
+                    modifier      = Modifier.fillMaxWidth()
+                )
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    Button(
+                        onClick  = {
+                            if (subjects.isNotEmpty()) {
+                                onAdd(
+                                    subjects[selectedSubjectIdx].id,
+                                    selectedDay,
+                                    formatTime(startHour, startMinute),
+                                    formatTime(endHour, endMinute),
+                                    room
+                                )
+                            }
+                        },
+                        enabled  = subjects.isNotEmpty(),
+                        modifier = Modifier.weight(1f)
+                    ) { Text("Add") }
+                }
+            }
+        }
+    }
+}
+
+// ── Edit Subject Dialog ───────────────────────────────────────────────────────
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -612,6 +870,8 @@ private fun EditSubjectDialog(
         }
     }
 }
+
+// ── Export / Import Timetable Dialogs ────────────────────────────────────────
 
 @Composable
 private fun ExportTimetableDialog(jsonText: String, onDismiss: () -> Unit) {
@@ -721,6 +981,8 @@ private fun ImportTimetableDialog(
     }
 }
 
+// ── Add Subject Dialog ────────────────────────────────────────────────────────
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddSubjectDialog(existingSubjects: List<Subject>, onDismiss: () -> Unit, onAdd: (String, String, String, Float) -> Unit) {
@@ -749,6 +1011,8 @@ private fun AddSubjectDialog(existingSubjects: List<Subject>, onDismiss: () -> U
     }
 }
 
+// ── Custom Color Picker Dialog ────────────────────────────────────────────────
+
 @Composable
 private fun CustomColorPickerDialog(initialColorHex: String, onDismiss: () -> Unit, onColorSelected: (String) -> Unit) {
     var hexInput by remember { mutableStateOf(initialColorHex) }
@@ -760,36 +1024,6 @@ private fun CustomColorPickerDialog(initialColorHex: String, onDismiss: () -> Un
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                     OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
                     Button(onClick = { onColorSelected(if (!hexInput.startsWith("#")) "#$hexInput" else hexInput) }, modifier = Modifier.weight(1f)) { Text("Select") }
-                }
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun AddSlotDialog(subjects: List<Subject>, day: Int, onDismiss: () -> Unit, onAdd: (Int, Int, String, String) -> Unit) {
-    var selectedSubjectIdx by remember { mutableIntStateOf(0) }
-    var selectedDay        by remember { mutableIntStateOf(day) }
-    var startTime          by remember { mutableStateOf("09:00") }
-    var endTime            by remember { mutableStateOf("10:00") }
-    var subjectExpanded    by remember { mutableStateOf(false) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(modifier = Modifier.padding(24.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Add Class Slot", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                ExposedDropdownMenuBox(expanded = subjectExpanded, onExpandedChange = { subjectExpanded = it }) {
-                    OutlinedTextField(value = subjects.getOrNull(selectedSubjectIdx)?.name ?: "", onValueChange = {}, readOnly = true, label = { Text("Subject") }, trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = subjectExpanded) }, modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth())
-                    ExposedDropdownMenu(expanded = subjectExpanded, onDismissRequest = { subjectExpanded = false }) {
-                        subjects.forEachIndexed { idx, subject ->
-                            DropdownMenuItem(text = { Text(subject.name) }, onClick = { selectedSubjectIdx = idx; subjectExpanded = false })
-                        }
-                    }
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
-                    Button(onClick = { if (subjects.isNotEmpty()) onAdd(subjects[selectedSubjectIdx].id, selectedDay, startTime, endTime) }, modifier = Modifier.weight(1f)) { Text("Add") }
                 }
             }
         }
