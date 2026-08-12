@@ -372,8 +372,9 @@ private fun SubjectDetailScreen(
                         // Target Info Banner
                         val bannerMsg = when {
                             ss.total == 0 -> "No class records yet for this subject"
-                            ss.requiredToTarget > 0 -> "Attend ${ss.requiredToTarget} more consecutive classes to reach %.0f%% target".format(targetPct)
-                            else -> "You can safely miss ${ss.safeToSkip} more classes while staying above target"
+                            ss.requiredToTarget > 0 -> "Attend ${ss.requiredToTarget} more consecutive class${if (ss.requiredToTarget == 1) "" else "es"} to reach %.0f%% target".format(targetPct)
+                            ss.safeToSkip > 0 -> "You can safely miss ${ss.safeToSkip} more class${if (ss.safeToSkip == 1) "" else "es"} while staying above target"
+                            else -> "Right on target! Any missed class will drop you below %.0f%%".format(targetPct)
                         }
                         Text(
                             text       = bannerMsg,
