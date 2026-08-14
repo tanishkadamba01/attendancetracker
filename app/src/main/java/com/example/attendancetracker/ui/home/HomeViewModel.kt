@@ -103,8 +103,10 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         val selectedMonday = date.with(DayOfWeek.MONDAY)
         val canPrev = startWeekMonday == null || selectedMonday.isAfter(startWeekMonday)
 
-        val totalForDay = slots.size
-        val attendedForDay = slots.count { swd ->
+        // Cancelled classes are NOT counted towards total or attended
+        val activeSlots = slots.filter { it.record?.status != AttendanceStatus.CANCELLED }
+        val totalForDay = activeSlots.size
+        val attendedForDay = activeSlots.count { swd ->
             val status = swd.record?.status
             when {
                 status == AttendanceStatus.PRESENT    -> true
@@ -165,6 +167,14 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleCancelled(slotId: Int, isCurrentlyCancelled: Boolean) {
+        viewModelScope.launch {
+            val dateStr = _selectedDate.value.format(fmt)
+            val newStatus = if (isCurrentlyCancelled) AttendanceStatus.PRESENT else AttendanceStatus.CANCELLED
+            repo.markAttendance(slotId, dateStr, newStatus)
+        }
+    }
+
     fun reassignSlot(slotId: Int, overrideSubjectId: Int) {
         viewModelScope.launch {
             val dateStr = _selectedDate.value.format(fmt)
@@ -177,5 +187,18 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
             val dateStr = _selectedDate.value.format(fmt)
             repo.markAttendance(slotId, dateStr, AttendanceStatus.PRESENT, null)
         }
+    }
+
+    fun shouldShowSundayUpdatePrompt(): Boolean {
+        val today = LocalDate.now()
+        if (today.dayOfWeek != DayOfWeek.SUNDAY) return false
+        val todayStr = today.format(fmt)
+        val lastPromptDate = themePrefs.getLastSundayPromptDate()
+        return lastPromptDate != todayStr
+    }
+
+    fun dismissSundayUpdatePrompt() {
+        val today = LocalDate.now()
+        themePrefs.setLastSundayPromptDate(today.format(fmt))
     }
 }

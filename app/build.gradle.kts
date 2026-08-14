@@ -12,8 +12,9 @@ android {
         applicationId = "com.example.attendancetracker"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 3
+        versionName = "1.0.2-alpha"
+        buildConfigField("String", "RELEASE_TYPE", "\"Alpha\"")
     }
 
     buildTypes {
@@ -28,8 +29,8 @@ android {
     }
     buildFeatures {
       compose = true
+      buildConfig = true
       aidl = false
-      buildConfig = false
       shaders = false
     }
 
@@ -72,6 +73,7 @@ dependencies {
   // Local tests: jUnit, coroutines, Android runner
   testImplementation(libs.junit)
   testImplementation(libs.kotlinx.coroutines.test)
+  testImplementation("org.json:json:20240303")
 
   // Instrumented tests: jUnit rules and runners
   androidTestImplementation(libs.androidx.test.core)

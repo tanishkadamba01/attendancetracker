@@ -1,9 +1,8 @@
-package com.example.attendancetracker
+﻿package com.example.attendancetracker
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.ContentTransform
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -97,10 +96,12 @@ fun MainNavigation() {
         }
 
         if (showSettings) {
-            SettingsScreen(onBack = {
-                showSettings = false
-                selectedTab  = 0
-            })
+            SettingsScreen(
+                onBack = {
+                    showSettings = false
+                    selectedTab  = 0
+                }
+            )
         } else {
             Scaffold(
                 bottomBar = {

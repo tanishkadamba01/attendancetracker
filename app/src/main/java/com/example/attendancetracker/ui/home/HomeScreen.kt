@@ -1,5 +1,7 @@
 package com.example.attendancetracker.ui.home
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,13 +31,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
@@ -59,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -87,7 +94,25 @@ fun HomeScreen(
 ) {
     val vm: HomeViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
+
+    var showSundayPrompt by remember { mutableStateOf(vm.shouldShowSundayUpdatePrompt()) }
+
+    if (showSundayPrompt) {
+        SundayUpdatePromptDialog(
+            onDismiss = {
+                vm.dismissSundayUpdatePrompt()
+                showSundayPrompt = false
+            },
+            onVisitWebsite = {
+                vm.dismissSundayUpdatePrompt()
+                showSundayPrompt = false
+                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://theattendancetracker.vercel.app"))
+                context.startActivity(intent)
+            }
+        )
+    }
 
     LazyColumn(
         modifier            = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
@@ -131,19 +156,23 @@ fun HomeScreen(
                     enter   = fadeIn(tween(300)) + slideInVertically(tween(300))
                 ) {
                     ClassCard(
-                        swd            = swd,
-                        allSubjects    = state.allSubjects,
-                        isAfter5PM     = state.isAfter5PM,
-                        isBeforeStart  = state.isBeforeStartDate,
-                        onToggleMissed = { isMissed ->
+                        swd               = swd,
+                        allSubjects       = state.allSubjects,
+                        isAfter5PM        = state.isAfter5PM,
+                        isBeforeStart     = state.isBeforeStartDate,
+                        onToggleMissed    = { isMissed ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             vm.toggleMissed(swd.slot.id, isMissed)
                         },
-                        onReassign     = { targetSubId ->
+                        onToggleCancelled = { isCancelled ->
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            vm.toggleCancelled(swd.slot.id, isCancelled)
+                        },
+                        onReassign        = { targetSubId ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             vm.reassignSlot(swd.slot.id, targetSubId)
                         },
-                        onRevert       = {
+                        onRevert          = {
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                             vm.revertSlot(swd.slot.id)
                         }
@@ -365,11 +394,13 @@ private fun ClassCard(
     isAfter5PM: Boolean,
     isBeforeStart: Boolean,
     onToggleMissed: (Boolean) -> Unit,
+    onToggleCancelled: (Boolean) -> Unit,
     onReassign: (Int) -> Unit,
     onRevert: () -> Unit
 ) {
     val originalSubject = swd.subject
     val overrideSubject = swd.overrideSubject
+    val isCancelled     = swd.record?.status == AttendanceStatus.CANCELLED
     val isReassigned    = swd.record?.status == AttendanceStatus.REASSIGNED && overrideSubject != null
     val isMissed        = swd.record?.status == AttendanceStatus.ABSENT
     val isExplicitPresent = swd.record?.status == AttendanceStatus.PRESENT
@@ -407,7 +438,7 @@ private fun ClassCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier.width(4.dp).height(44.dp)
-                        .clip(RoundedCornerShape(2.dp)).background(subjectColor)
+                        .clip(RoundedCornerShape(2.dp)).background(if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f) else subjectColor)
                 )
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
@@ -415,16 +446,17 @@ private fun ClassCard(
                         text       = originalSubject?.name ?: "Unknown Subject",
                         style      = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
-                        color      = MaterialTheme.colorScheme.onBackground
+                        color      = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        text  = "${swd.slot.startTime} – ${swd.slot.endTime}",
+                        text  = "${swd.slot.startTime} – ${swd.slot.endTime}${if (swd.slot.room.isNotBlank()) " • ${swd.slot.room}" else ""}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 StatusBadge(
+                    isCancelled       = isCancelled,
                     isMissed          = isMissed,
                     isReassigned      = isReassigned,
                     isExplicitPresent = isExplicitPresent,
@@ -436,11 +468,13 @@ private fun ClassCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
 
+            // Action Row 1: Missed Class + Class Cancelled
             Row(
                 modifier              = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment     = Alignment.CenterVertically
             ) {
+                // Missed button
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -448,7 +482,7 @@ private fun ClassCard(
                         .background(if (isMissed) Coral.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                         .border(1.dp, if (isMissed) Coral else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
                         .clickable { onToggleMissed(isMissed) }
-                        .padding(vertical = 10.dp),
+                        .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -459,25 +493,26 @@ private fun ClassCard(
                             imageVector        = if (isMissed) Icons.Default.CheckCircle else Icons.Default.Cancel,
                             contentDescription = null,
                             tint               = if (isMissed) Mint else Coral,
-                            modifier           = Modifier.size(16.dp)
+                            modifier           = Modifier.size(15.dp)
                         )
                         Text(
                             text       = if (isMissed) "Mark Attended" else "Missed Class",
-                            style      = MaterialTheme.typography.labelMedium,
+                            style      = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
                             color      = if (isMissed) Mint else Coral
                         )
                     }
                 }
 
+                // Cancelled button
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (isReassigned) Amber.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
-                        .border(1.dp, if (isReassigned) Amber else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                        .clickable { showReassignDialog = true }
-                        .padding(vertical = 10.dp),
+                        .background(if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface)
+                        .border(1.dp, if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                        .clickable { onToggleCancelled(isCancelled) }
+                        .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Row(
@@ -485,18 +520,48 @@ private fun ClassCard(
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         Icon(
-                            imageVector        = Icons.Default.SwapHoriz,
+                            imageVector        = if (isCancelled) Icons.Default.CheckCircle else Icons.Default.Block,
                             contentDescription = null,
-                            tint               = if (isReassigned) Amber else Indigo60,
-                            modifier           = Modifier.size(16.dp)
+                            tint               = if (isCancelled) Mint else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier           = Modifier.size(15.dp)
                         )
                         Text(
-                            text       = if (isReassigned) "Change Reassign" else "Taken by Another",
-                            style      = MaterialTheme.typography.labelMedium,
+                            text       = if (isCancelled) "Uncancel" else "Class Cancelled",
+                            style      = MaterialTheme.typography.labelSmall,
                             fontWeight = FontWeight.SemiBold,
-                            color      = if (isReassigned) Amber else Indigo60
+                            color      = if (isCancelled) Mint else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
+            }
+
+            // Action Row 2: Taken by Another Subject
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(if (isReassigned) Amber.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
+                    .border(1.dp, if (isReassigned) Amber else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
+                    .clickable { showReassignDialog = true }
+                    .padding(vertical = 9.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Row(
+                    verticalAlignment     = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.SwapHoriz,
+                        contentDescription = null,
+                        tint               = if (isReassigned) Amber else Indigo60,
+                        modifier           = Modifier.size(16.dp)
+                    )
+                    Text(
+                        text       = if (isReassigned) "Change Reassignment (Taken by ${overrideSubject?.name ?: "Other"})" else "Taken by Another Subject",
+                        style      = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color      = if (isReassigned) Amber else Indigo60
+                    )
                 }
             }
         }
@@ -505,6 +570,7 @@ private fun ClassCard(
 
 @Composable
 private fun StatusBadge(
+    isCancelled: Boolean,
     isMissed: Boolean,
     isReassigned: Boolean,
     isExplicitPresent: Boolean,
@@ -514,6 +580,7 @@ private fun StatusBadge(
 ) {
     val (text, bgColor, textColor) = when {
         isBeforeStart -> Triple("⏳ Before Start Day", Indigo60.copy(alpha = 0.15f), Indigo60)
+        isCancelled -> Triple("🚫 Cancelled", MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.2f), MaterialTheme.colorScheme.onSurfaceVariant)
         isMissed -> Triple("Missed", Coral.copy(alpha = 0.2f), Coral)
         isReassigned -> Triple("Taken by ${overrideSubject?.name ?: "Other"}", Amber.copy(alpha = 0.2f), Amber)
         isExplicitPresent || isAfter5PM -> Triple("✓ Attended", Mint.copy(alpha = 0.18f), Mint)
@@ -645,6 +712,82 @@ private fun ReassignSubjectDialog(
                     }
                     Button(onClick = onDismiss, modifier = Modifier.weight(1f)) {
                         Text("Cancel")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SundayUpdatePromptDialog(
+    onDismiss: () -> Unit,
+    onVisitWebsite: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape  = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            border = BorderStroke(1.dp, Indigo60.copy(alpha = 0.3f))
+        ) {
+            Column(
+                modifier            = Modifier.padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .background(Indigo60.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector        = Icons.Default.SystemUpdate,
+                        contentDescription = null,
+                        tint               = Indigo60,
+                        modifier           = Modifier.size(30.dp)
+                    )
+                }
+
+                Text(
+                    text       = "Weekly App Update",
+                    style      = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color      = MaterialTheme.colorScheme.onBackground,
+                    textAlign  = TextAlign.Center
+                )
+
+                Text(
+                    text       = "Check for the latest version and features of Attendance Tracker on our official website.",
+                    style      = MaterialTheme.typography.bodyMedium,
+                    color      = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign  = TextAlign.Center,
+                    lineHeight = 20.sp
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Row(
+                    modifier              = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick  = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        shape    = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Dismiss", color = MaterialTheme.colorScheme.onBackground)
+                    }
+                    Button(
+                        onClick  = onVisitWebsite,
+                        modifier = Modifier.weight(1.2f),
+                        colors   = ButtonDefaults.buttonColors(containerColor = Indigo60),
+                        shape    = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Visit Website", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     }
                 }
             }

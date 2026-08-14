@@ -1,17 +1,19 @@
 package com.example.attendancetracker.ui.timetable
 
 import android.app.Application
+import android.content.Context
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.attendancetracker.AttendanceApplication
 import com.example.attendancetracker.data.model.Subject
 import com.example.attendancetracker.data.model.TimetableSlot
+import com.example.attendancetracker.data.timetable.TimetableSerializer
 import com.example.attendancetracker.theme.SubjectColorHexList
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import org.json.JSONArray
-import org.json.JSONObject
-
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 
 data class SlotWithSubject(
@@ -23,7 +25,8 @@ data class TimetableUiState(
     val selectedDay: Int = 1,  // 1=Monday…6=Saturday
     val slotsForDay: List<SlotWithSubject> = emptyList(),
     val allSubjects: List<Subject> = emptyList(),
-    val startDate: LocalDate? = null
+    val startDate: LocalDate? = null,
+    val isExportingOrImporting: Boolean = false
 )
 
 sealed class ImportExportResult {
@@ -37,6 +40,7 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
     private val themePrefs = app.themePreferences
 
     private val _selectedDay = MutableStateFlow(1)
+    private val _isBusy = MutableStateFlow(false)
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val _slotsForDay: Flow<List<SlotWithSubject>> = _selectedDay.flatMapLatest { day ->
@@ -51,149 +55,189 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
         _selectedDay,
         _slotsForDay,
         repo.allSubjects,
-        themePrefs.startDate
-    ) { day, slots, subjects, start ->
+        themePrefs.startDate,
+        _isBusy
+    ) { day, slots, subjects, start, busy ->
         TimetableUiState(
             selectedDay  = day,
             slotsForDay  = slots,
             allSubjects  = subjects,
-            startDate    = start
+            startDate    = start,
+            isExportingOrImporting = busy
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), TimetableUiState())
 
-    fun selectDay(day: Int) { _selectedDay.value = day }
+    fun selectDay(day: Int) {
+        _selectedDay.value = day
+    }
 
     fun setStartDate(date: LocalDate?) {
         themePrefs.setStartDate(date)
     }
 
-    fun addSubject(name: String, colorHex: String, code: String, targetPct: Float, onResult: (Boolean, String) -> Unit) {
+    fun addSubject(
+        name: String,
+        colorHex: String,
+        code: String = "",
+        targetPct: Float = 85f,
+        onResult: (Boolean, String) -> Unit
+    ) {
         viewModelScope.launch {
             val existing = repo.getSubjectByName(name)
             if (existing != null) {
-                onResult(false, "A subject named '$name' already exists.")
-            } else {
-                repo.insertSubject(Subject(name = name, colorHex = colorHex, code = code, targetPercentage = targetPct))
-                onResult(true, "Subject added!")
+                onResult(false, "Subject '$name' already exists.")
+                return@launch
             }
+            repo.insertSubject(
+                Subject(
+                    name = name,
+                    colorHex = colorHex,
+                    code = code,
+                    targetPercentage = targetPct
+                )
+            )
+            onResult(true, "Added '$name'")
         }
     }
 
     fun updateSubject(subject: Subject, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
-            val existing = repo.getSubjectByName(subject.name)
-            if (existing != null && existing.id != subject.id) {
-                onResult(false, "A subject named '${subject.name}' already exists.")
-            } else {
-                repo.updateSubject(subject)
-                onResult(true, "Subject updated!")
-            }
+            repo.updateSubject(subject)
+            onResult(true, "Updated '${subject.name}'")
         }
     }
 
-    fun deleteSubject(subject: Subject) {
-        viewModelScope.launch { repo.deleteSubject(subject) }
+    fun deleteSubject(subject: Subject, onResult: ((Boolean, String) -> Unit)? = null) {
+        viewModelScope.launch {
+            repo.deleteSubject(subject)
+            onResult?.invoke(true, "Deleted '${subject.name}' and its timetable slots.")
+        }
     }
 
-    /**
-     * Add a new class slot with overlap validation.
-     * @param onResult callback: success=true with message, or success=false with error message.
-     */
     fun addSlot(
         subjectId: Int,
         day: Int,
         startTime: String,
         endTime: String,
-        room: String = "",
-        onResult: ((Boolean, String) -> Unit)? = null
+        room: String,
+        onResult: (Boolean, String) -> Unit
     ) {
         viewModelScope.launch {
-            // Validate end > start
-            try {
-                val start = java.time.LocalTime.parse(startTime)
-                val end   = java.time.LocalTime.parse(endTime)
-                if (!end.isAfter(start)) {
-                    onResult?.invoke(false, "End time must be after start time.")
-                    return@launch
-                }
-            } catch (e: Exception) {
-                onResult?.invoke(false, "Invalid time format.")
+            val conflict = repo.findOverlappingSlot(day, startTime, endTime)
+            if (conflict != null) {
+                val conflictingSubject = repo.getSubjectById(conflict.subjectId)
+                val name = conflictingSubject?.name ?: "another class"
+                onResult(
+                    false,
+                    "Time conflict: Overlaps with '$name' (${conflict.startTime} - ${conflict.endTime})"
+                )
                 return@launch
             }
-
-            // Check for overlaps
-            val overlapping = repo.findOverlappingSlot(day, startTime, endTime)
-            if (overlapping != null) {
-                val subjectName = repo.getSubjectById(overlapping.subjectId)?.name ?: "another class"
-                val dayName = listOf("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday").getOrElse(day-1){"day"}
-                onResult?.invoke(false, "⚠️ Conflict on $dayName: overlaps with '$subjectName' (${overlapping.startTime}–${overlapping.endTime})")
-                return@launch
-            }
-
-            repo.insertSlot(TimetableSlot(subjectId = subjectId, dayOfWeek = day, startTime = startTime, endTime = endTime, room = room.trim()))
-            onResult?.invoke(true, "Class slot added!")
+            repo.insertSlot(
+                TimetableSlot(
+                    subjectId = subjectId,
+                    dayOfWeek = day,
+                    startTime = startTime,
+                    endTime = endTime,
+                    room = room
+                )
+            )
+            onResult(true, "Class added to schedule!")
         }
     }
 
     fun deleteSlot(slot: TimetableSlot) {
-        viewModelScope.launch { repo.deleteSlot(slot) }
-    }
-
-    // ── Import / Export Logic ─────────────────────────────────
-
-    private val dayNames = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
-
-    suspend fun exportTimetableJson(): String {
-        val subjects = repo.allSubjects.first()
-        val slots    = repo.allSlots.first()
-
-        val json = JSONObject()
-        json.put("semester", "Semester 1")
-
-        val workingDaysArr = JSONArray()
-        dayNames.forEach { workingDaysArr.put(it) }
-        json.put("workingDays", workingDaysArr)
-
-        val timeSlotsArr = JSONArray()
-        val defaultTimes = listOf("09:00-10:00", "10:00-11:00", "11:15-12:15", "01:00-02:00", "02:00-03:00")
-        defaultTimes.forEach { timeSlotsArr.put(it) }
-        json.put("timeSlots", timeSlotsArr)
-
-        val timetableObj = JSONObject()
-        dayNames.forEachIndexed { idx, dayName ->
-            val dayInt = idx + 1
-            val daySlots = slots.filter { it.dayOfWeek == dayInt }.sortedBy { it.startTime }
-            val dayArr = JSONArray()
-            daySlots.forEach { slot ->
-                val sub = subjects.find { it.id == slot.subjectId }
-                val slotObj = JSONObject()
-                slotObj.put("subject", sub?.name ?: "Unknown")
-                slotObj.put("time", "${slot.startTime}-${slot.endTime}")
-                if (slot.room.isNotBlank()) slotObj.put("room", slot.room)
-                dayArr.put(slotObj)
-            }
-            timetableObj.put(dayName, dayArr)
+        viewModelScope.launch {
+            repo.deleteSlot(slot)
         }
-        json.put("timetable", timetableObj)
-
-        return json.toString(2)
     }
 
-    suspend fun importTimetableJson(jsonText: String, replaceExisting: Boolean, startDate: LocalDate? = null): ImportExportResult {
-        return try {
-            val json = JSONObject(jsonText)
+    // ── Import / Export Logic ─────────────────────────────────────────────────
 
-            if (!json.has("timetable")) {
-                return ImportExportResult.Error("Validation Error: Missing required 'timetable' section in JSON.")
+    fun generateExportFileName(isTemplate: Boolean = false): String {
+        return TimetableSerializer.generateFileName(isTemplate)
+    }
+
+    suspend fun exportTimetableJson(isTemplate: Boolean = false): String {
+        return if (isTemplate) {
+            TimetableSerializer.buildAiTemplateJson()
+        } else {
+            val subjects = repo.allSubjects.first()
+            val slots = repo.allSlots.first()
+            val startDate = themePrefs.startDate.first()
+            if (subjects.isEmpty() && slots.isEmpty()) {
+                TimetableSerializer.buildAiTemplateJson()
+            } else {
+                TimetableSerializer.buildTimetableJson(subjects, slots, startDate)
             }
+        }
+    }
 
-            val timetableObj = json.getJSONObject("timetable")
-            if (timetableObj.length() == 0) {
-                return ImportExportResult.Error("Validation Error: The 'timetable' section is empty.")
+    /**
+     * Write timetable JSON directly to the given SAF URI.
+     */
+    fun exportToUri(
+        context: Context,
+        uri: Uri,
+        isTemplate: Boolean,
+        onComplete: (ImportExportResult) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            _isBusy.value = true
+            val result = try {
+                val json = exportTimetableJson(isTemplate)
+                context.contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(json.toByteArray(Charsets.UTF_8))
+                } ?: throw Exception("Could not open file destination for writing.")
+                ImportExportResult.Success(
+                    if (isTemplate) "Sample AI template saved successfully!"
+                    else "Timetable schedule JSON exported successfully!"
+                )
+            } catch (e: Exception) {
+                ImportExportResult.Error("Export failed: ${e.localizedMessage ?: "Unknown error"}")
             }
+            _isBusy.value = false
+            withContext(Dispatchers.Main) { onComplete(result) }
+        }
+    }
 
-            if (startDate != null) {
-                themePrefs.setStartDate(startDate)
+    /**
+     * Reads and parses a JSON timetable file from a SAF Uri.
+     */
+    fun readTimetableFromUri(
+        context: Context,
+        uri: Uri,
+        onResult: (TimetableSerializer.ParseResult) -> Unit
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                val jsonText = context.contentResolver.openInputStream(uri)?.use { ins ->
+                    ins.readBytes().toString(Charsets.UTF_8)
+                } ?: throw Exception("Could not read file.")
+                TimetableSerializer.parseTimetableJson(jsonText)
+            } catch (e: Exception) {
+                TimetableSerializer.ParseResult.Error("Failed to read file: ${e.localizedMessage ?: "Unknown error"}")
+            }
+            withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    fun parseTimetableText(jsonText: String): TimetableSerializer.ParseResult {
+        return TimetableSerializer.parseTimetableJson(jsonText)
+    }
+
+    /**
+     * Applies parsed timetable data to the database.
+     */
+    suspend fun applyParsedTimetable(
+        parsed: TimetableSerializer.ParsedTimetable,
+        replaceExisting: Boolean,
+        startDate: LocalDate? = null
+    ): ImportExportResult = withContext(Dispatchers.IO) {
+        try {
+            val effectiveStartDate = startDate ?: parsed.classStartDate
+            if (effectiveStartDate != null) {
+                themePrefs.setStartDate(effectiveStartDate)
             }
 
             if (replaceExisting) {
@@ -201,72 +245,105 @@ class TimetableViewModel(application: Application) : AndroidViewModel(applicatio
                 repo.deleteAllSubjects()
             }
 
-            val defaultTimePairs = listOf(
-                Pair("09:00", "10:00"),
-                Pair("10:00", "11:00"),
-                Pair("11:15", "12:15"),
-                Pair("13:00", "14:00"),
-                Pair("14:00", "15:00")
-            )
+            var importedSubjects = 0
+            var importedSlots = 0
+            var skippedSlots = 0
 
-            var importedSlotsCount = 0
-            var importedSubjectsCount = 0
+            val subjectIdByName = mutableMapOf<String, Int>()
 
-            dayNames.forEachIndexed { idx, dayName ->
-                val dayInt = idx + 1
-                if (timetableObj.has(dayName)) {
-                    val dayArr = timetableObj.getJSONArray(dayName)
-                    for (i in 0 until dayArr.length()) {
-                        val slotItem = dayArr.getJSONObject(i)
-                        val subjectName = slotItem.optString("subject", "").trim()
+            // 1. Upsert subjects
+            for (parsedSub in parsed.subjects) {
+                val name = parsedSub.name.trim()
+                if (name.isNotBlank()) {
+                    val colorHex = if (parsedSub.colorHex.isNotBlank()) {
+                        parsedSub.colorHex
+                    } else {
+                        pickColor(subjectIdByName.size)
+                    }
 
-                        if (subjectName.isNotBlank() && !subjectName.equals("Break", ignoreCase = true)) {
-                            // Find or create subject
-                            var subject = repo.getSubjectByName(subjectName)
-                            if (subject == null) {
-                                val existingSubjects = repo.allSubjects.first()
-                                val usedColors = existingSubjects.map { it.colorHex.uppercase() }.toSet()
-                                val availableColors = SubjectColorHexList.filter { it.uppercase() !in usedColors }
-                                val color = if (availableColors.isNotEmpty()) availableColors.random() else SubjectColorHexList.random()
-
-                                val newId = repo.insertSubject(Subject(name = subjectName, colorHex = color))
-                                subject = Subject(id = newId.toInt(), name = subjectName, colorHex = color)
-                                importedSubjectsCount++
-                            }
-
-                            // Extract start/end time
-                            var startTime = defaultTimePairs.getOrElse(i) { Pair("09:00", "10:00") }.first
-                            var endTime   = defaultTimePairs.getOrElse(i) { Pair("09:00", "10:00") }.second
-
-                            if (slotItem.has("time")) {
-                                val timeStr = slotItem.getString("time")
-                                val parts = timeStr.split("-")
-                                if (parts.size == 2) {
-                                    startTime = parts[0].trim()
-                                    endTime   = parts[1].trim()
-                                }
-                            }
-
-                            val room = slotItem.optString("room", "")
-
-                            repo.insertSlot(
-                                TimetableSlot(
-                                    subjectId = subject.id,
-                                    dayOfWeek = dayInt,
-                                    startTime = startTime,
-                                    endTime   = endTime,
-                                    room      = room
-                                )
+                    val existing = repo.getSubjectByName(name)
+                    if (existing != null) {
+                        repo.updateSubject(
+                            existing.copy(
+                                colorHex = colorHex,
+                                code = if (parsedSub.code.isNotBlank()) parsedSub.code else existing.code,
+                                targetPercentage = parsedSub.targetPercentage
                             )
-                            importedSlotsCount++
-                        }
+                        )
+                        subjectIdByName[name] = existing.id
+                    } else {
+                        val newId = repo.insertSubject(
+                            Subject(
+                                name = name,
+                                colorHex = colorHex,
+                                code = parsedSub.code,
+                                targetPercentage = parsedSub.targetPercentage
+                            )
+                        )
+                        subjectIdByName[name] = newId.toInt()
+                        importedSubjects++
                     }
                 }
             }
 
-            ImportExportResult.Success("Successfully imported timetable with $importedSubjectsCount subjects and $importedSlotsCount slots!")
+            // 2. Insert slots
+            for (slot in parsed.slots) {
+                val subjectName = slot.subjectName.trim()
+                if (subjectName.isBlank() || slot.dayOfWeek !in 1..7 || slot.startTime.isBlank() || slot.endTime.isBlank()) {
+                    skippedSlots++
+                    continue
+                }
+
+                val subjectId = subjectIdByName.getOrPut(subjectName) {
+                    val existing = repo.getSubjectByName(subjectName)
+                    if (existing != null) {
+                        existing.id
+                    } else {
+                        val color = pickColor(subjectIdByName.size)
+                        val newId = repo.insertSubject(Subject(name = subjectName, colorHex = color))
+                        importedSubjects++
+                        newId.toInt()
+                    }
+                }
+
+                repo.insertSlot(
+                    TimetableSlot(
+                        subjectId = subjectId,
+                        dayOfWeek = slot.dayOfWeek,
+                        startTime = slot.startTime,
+                        endTime   = slot.endTime,
+                        room      = slot.room
+                    )
+                )
+                importedSlots++
+            }
+
+            val msg = buildString {
+                append("Imported $importedSubjects subject${if (importedSubjects == 1) "" else "s"}")
+                append(", $importedSlots slot${if (importedSlots == 1) "" else "s"}")
+                if (skippedSlots > 0) append(" ($skippedSlots invalid slots skipped)")
+            }
+            ImportExportResult.Success(msg)
         } catch (e: Exception) {
-            ImportExportResult.Error("JSON Parse Error: ${e.localizedMessage ?: "Invalid format"}")
+            ImportExportResult.Error("Import error: ${e.localizedMessage ?: "Database insertion failed"}")
         }
     }
+
+    suspend fun importTimetableJson(
+        jsonText: String,
+        replaceExisting: Boolean,
+        startDate: LocalDate? = null
+    ): ImportExportResult {
+        return when (val parseResult = TimetableSerializer.parseTimetableJson(jsonText)) {
+            is TimetableSerializer.ParseResult.Success -> {
+                applyParsedTimetable(parseResult.data, replaceExisting, startDate)
+            }
+            is TimetableSerializer.ParseResult.Error -> {
+                ImportExportResult.Error(parseResult.message)
+            }
+        }
+    }
+
+    private fun pickColor(index: Int): String =
+        SubjectColorHexList[index % SubjectColorHexList.size]
 }

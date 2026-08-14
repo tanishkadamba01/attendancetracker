@@ -418,6 +418,7 @@ private fun SubjectDetailScreen(
                             AttendanceStatus.PRESENT    -> Pair("Attended", Mint)
                             AttendanceStatus.ABSENT     -> Pair("Missed", Coral)
                             AttendanceStatus.REASSIGNED -> Pair("Reassigned", Amber)
+                            AttendanceStatus.CANCELLED  -> Pair("Cancelled", MaterialTheme.colorScheme.onSurfaceVariant)
                             AttendanceStatus.PENDING    -> Pair("Pending", Indigo60)
                         }
 

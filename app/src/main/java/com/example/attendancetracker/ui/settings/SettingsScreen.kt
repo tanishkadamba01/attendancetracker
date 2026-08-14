@@ -1,6 +1,7 @@
 package com.example.attendancetracker.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -8,7 +9,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -35,7 +35,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -50,7 +49,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,7 +59,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -69,101 +66,145 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.attendancetracker.data.backup.BackupSerializer
 import com.example.attendancetracker.data.local.AppThemeMode
+import com.example.attendancetracker.theme.Amber
 import com.example.attendancetracker.theme.Coral
 import com.example.attendancetracker.theme.Indigo60
-import kotlinx.coroutines.launch
+import com.example.attendancetracker.theme.Mint
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
-    onBack: () -> Unit,
-    modifier: Modifier = Modifier
+    onBack: () -> Unit
 ) {
     val vm: SettingsViewModel = viewModel()
     val state by vm.uiState.collectAsStateWithLifecycle()
     val isBackupInProgress by vm.isBackupInProgress.collectAsStateWithLifecycle()
+
     val context = LocalContext.current
-    val haptic = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
+    val haptic  = LocalHapticFeedback.current
 
-    var showResetDialog     by remember { mutableStateOf(false) }
-    var showPrivacyDialog   by remember { mutableStateOf(false) }
-    var showTermsDialog     by remember { mutableStateOf(false) }
-    var showAboutDialog     by remember { mutableStateOf(false) }
-
-    // Parsed backup awaiting user confirmation for replace
-    var pendingImportData   by remember { mutableStateOf<BackupSerializer.BackupData?>(null) }
+    var showResetDialog         by remember { mutableStateOf(false) }
     var showImportConfirmDialog by remember { mutableStateOf(false) }
+    var pendingBackupData       by remember { mutableStateOf<BackupSerializer.BackupData?>(null) }
+    var showPrivacyDialog       by remember { mutableStateOf(false) }
+    var showTermsDialog         by remember { mutableStateOf(false) }
+    var showAboutScreen         by remember { mutableStateOf(false) }
 
-    // ── File Picker Launchers ─────────────────────────────────────────────────
-
-    // Export: system file picker to create/save a new file
+    // Export Backup File Picker Launcher
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json")
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        vm.exportToUri(context, uri) { result ->
-            when (result) {
-                is BackupResult.Success -> {
-                    Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
-                    // Also offer share sheet
-                    scope.launch {
-                        try {
-                            val json = vm.buildBackupJson()
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "application/json"
-                                putExtra(Intent.EXTRA_TEXT, json)
-                                putExtra(Intent.EXTRA_SUBJECT, "Attendance Tracker Backup")
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "Share Backup File"))
-                        } catch (e: Exception) { /* share is optional */ }
-                    }
+        if (uri != null) {
+            vm.exportToUri(context, uri) { result ->
+                when (result) {
+                    is BackupResult.Success -> Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                    is BackupResult.Error   -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                 }
-                is BackupResult.Error -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
             }
         }
     }
 
-    // Import: system file picker to open an existing file
+    // Import Backup File Picker Launcher
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        vm.readBackupFromUri(context, uri) { parseResult ->
-            when (parseResult) {
-                is BackupSerializer.ParseResult.Success -> {
-                    pendingImportData = parseResult.data
-                    showImportConfirmDialog = true
-                }
-                is BackupSerializer.ParseResult.Error -> {
-                    Toast.makeText(context, parseResult.message, Toast.LENGTH_LONG).show()
+        if (uri != null) {
+            vm.readBackupFromUri(context, uri) { parseResult ->
+                when (parseResult) {
+                    is BackupSerializer.ParseResult.Success -> {
+                        pendingBackupData = parseResult.data
+                        showImportConfirmDialog = true
+                    }
+                    is BackupSerializer.ParseResult.Error -> {
+                        Toast.makeText(context, parseResult.message, Toast.LENGTH_LONG).show()
+                    }
                 }
             }
         }
     }
 
-    // ── Dialogs ────────────────────────────────────────────────────────────────
+    // Confirmation Dialog for Import
+    if (showImportConfirmDialog && pendingBackupData != null) {
+        val data = pendingBackupData!!
+        Dialog(onDismissRequest = { showImportConfirmDialog = false; pendingBackupData = null }) {
+            Card(
+                shape  = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                Column(
+                    modifier            = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Text("Restore from Backup?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
+                    Text(
+                        "This will replace all your current data with the backup contents:\n\n" +
+                        "• ${data.subjects.size} subjects\n" +
+                        "• ${data.slots.size} timetable slots\n" +
+                        "• ${data.records.size} attendance records\n\n" +
+                        "This action cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier              = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick  = { showImportConfirmDialog = false; pendingBackupData = null },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Cancel")
+                        }
+                        Button(
+                            onClick  = {
+                                showImportConfirmDialog = false
+                                vm.restoreFromBackup(context, data) { result ->
+                                    pendingBackupData = null
+                                    when (result) {
+                                        is BackupResult.Success -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                        is BackupResult.Error   -> Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                                    }
+                                }
+                            },
+                            colors   = ButtonDefaults.buttonColors(containerColor = Indigo60),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Restore")
+                        }
+                    }
+                }
+            }
+        }
+    }
 
+    // Confirmation Dialog for Reset All Data
     if (showResetDialog) {
         Dialog(onDismissRequest = { showResetDialog = false }) {
             Card(
                 shape  = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("⚠️ Reset All Data", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Coral)
-                    Text("Are you sure you want to reset all subjects, timetable slots, and attendance records? This action cannot be undone.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier            = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text("Reset All Data?", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Coral)
+                    Text(
+                        "This will permanently delete all subjects, timetable slots, and attendance records. This cannot be undone.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier              = Modifier.fillMaxWidth()
+                    ) {
                         OutlinedButton(onClick = { showResetDialog = false }, modifier = Modifier.weight(1f)) {
                             Text("Cancel")
                         }
                         Button(
                             onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 vm.resetAllData {
                                     showResetDialog = false
-                                    Toast.makeText(context, "All data reset successfully", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "All data reset", Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors   = ButtonDefaults.buttonColors(containerColor = Coral),
@@ -177,151 +218,94 @@ fun SettingsScreen(
         }
     }
 
-    // Import replace-existing confirmation dialog
-    if (showImportConfirmDialog && pendingImportData != null) {
-        val data = pendingImportData!!
-        Dialog(onDismissRequest = {
-            showImportConfirmDialog = false
-            pendingImportData = null
-        }) {
-            Card(
-                shape  = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("📦 Import Backup?", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Indigo60)
-                    Text(
-                        "This backup contains:\n• ${data.subjects.size} subjects\n• ${data.slots.size} class slots\n• ${data.records.size} attendance records\n\nAll existing data will be replaced. This cannot be undone.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(
-                            onClick = {
-                                showImportConfirmDialog = false
-                                pendingImportData = null
-                            },
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Cancel") }
-                        Button(
-                            onClick = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showImportConfirmDialog = false
-                                vm.restoreFromBackup(context, data) { result ->
-                                    pendingImportData = null
-                                    when (result) {
-                                        is BackupResult.Success -> Toast.makeText(context, "✅ ${result.message}", Toast.LENGTH_LONG).show()
-                                        is BackupResult.Error   -> Toast.makeText(context, "❌ ${result.message}", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            },
-                            colors   = ButtonDefaults.buttonColors(containerColor = Indigo60),
-                            modifier = Modifier.weight(1f)
-                        ) { Text("Replace & Restore") }
-                    }
-                }
-            }
-        }
-    }
-
+    // Privacy Policy Dialog
     if (showPrivacyDialog) {
         Dialog(onDismissRequest = { showPrivacyDialog = false }) {
             Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Privacy Policy", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                    Text("Attendance Tracker operates 100% offline. All your timetable data and attendance logs remain safely stored on your local device. We do not collect, transmit, or share any user data.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("Privacy Policy", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "Attendance Tracker does not collect, store, or share any personal data. All data is saved entirely on your device locally via Room Database.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Button(onClick = { showPrivacyDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
                 }
             }
         }
     }
 
+    // Terms of Service Dialog
     if (showTermsDialog) {
         Dialog(onDismissRequest = { showTermsDialog = false }) {
             Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Terms of Service", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                    Text("This application is provided for personal attendance tracking. You are free to use, export, and import your data anytime.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Text("Terms of Service", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(
+                        "This app is provided free of charge for tracking student attendance. No warranty is provided regarding attendance calculations or grade guarantees.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Button(onClick = { showTermsDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("Close") }
                 }
             }
         }
     }
 
-    if (showAboutDialog) {
-        Dialog(onDismissRequest = { showAboutDialog = false }) {
-            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-                Column(modifier = Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("📅 Attendance Tracker", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = Indigo60)
-                    Text("Version 1.0.0", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Built with Jetpack Compose & Room for smart weekly attendance tracking.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
-                    Button(onClick = { showAboutDialog = false }, modifier = Modifier.fillMaxWidth()) { Text("OK") }
-                }
-            }
-        }
+    // Dedicated About Screen Subpage
+    if (showAboutScreen) {
+        AboutScreen(
+            onBack = { showAboutScreen = false }
+        )
+        return
     }
 
-    // Progress overlay during backup operations
-    if (isBackupInProgress) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.7f)),
-            contentAlignment = Alignment.Center
-        ) {
-            Card(
-                shape  = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
-                Row(
-                    modifier = Modifier.padding(24.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    CircularProgressIndicator(
-                        color    = Indigo60,
-                        modifier = Modifier.size(28.dp)
-                    )
-                    Text("Processing backup…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
-                }
-            }
-        }
-    }
-
-    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        // Top Bar Header
+    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+        // Top App Bar
         Row(
-            modifier          = Modifier.fillMaxWidth().padding(16.dp),
+            modifier          = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = MaterialTheme.colorScheme.onBackground)
             }
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text("Settings", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
         }
 
         LazyColumn(
+            modifier            = Modifier.fillMaxSize(),
             contentPadding      = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // ── Section 1: Appearance & Theme ────────────────────────
+            // ── Section 1: Appearance ─────────────────────────────────
             item {
                 SettingsCategoryCard(title = "Appearance", icon = Icons.Default.Palette) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Theme Mode", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        ThemeOptionRow("☀️ Light Mode", state.themeMode == AppThemeMode.LIGHT) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            vm.setThemeMode(AppThemeMode.LIGHT)
-                        }
-                        ThemeOptionRow("🌙 Dark Mode", state.themeMode == AppThemeMode.DARK) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            vm.setThemeMode(AppThemeMode.DARK)
-                        }
-                        ThemeOptionRow("⚫ AMOLED Mode (Pure Black)", state.themeMode == AppThemeMode.AMOLED) {
-                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            vm.setThemeMode(AppThemeMode.AMOLED)
-                        }
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ThemeOptionRow(
+                            label      = "Light Theme",
+                            isSelected = state.themeMode == AppThemeMode.LIGHT,
+                            onClick    = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.setThemeMode(AppThemeMode.LIGHT)
+                            }
+                        )
+                        ThemeOptionRow(
+                            label      = "Dark Theme",
+                            isSelected = state.themeMode == AppThemeMode.DARK,
+                            onClick    = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.setThemeMode(AppThemeMode.DARK)
+                            }
+                        )
+                        ThemeOptionRow(
+                            label      = "AMOLED Pure Black",
+                            isSelected = state.themeMode == AppThemeMode.AMOLED,
+                            onClick    = {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                vm.setThemeMode(AppThemeMode.AMOLED)
+                            }
+                        )
                     }
                 }
             }
@@ -367,6 +351,18 @@ fun SettingsScreen(
             item {
                 SettingsCategoryCard(title = "Data Management", icon = Icons.Default.SwapVert) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        if (isBackupInProgress) {
+                            Row(
+                                modifier              = Modifier.fillMaxWidth().padding(8.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment     = Alignment.CenterVertically
+                            ) {
+                                CircularProgressIndicator(color = Indigo60, modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Text("Processing backup...", style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+
                         // Export
                         Row(
                             modifier = Modifier
@@ -428,7 +424,11 @@ fun SettingsScreen(
             item {
                 SettingsCategoryCard(title = "General", icon = Icons.Default.Info) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        SettingsClickableRow("About") { showAboutDialog = true }
+                        SettingsClickableRow("About Attendance Tracker") { showAboutScreen = true }
+                        SettingsClickableRow("Official Website (theattendancetracker.vercel.app)") {
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://theattendancetracker.vercel.app"))
+                            context.startActivity(intent)
+                        }
                         SettingsClickableRow("Privacy Policy") { showPrivacyDialog = true }
                         SettingsClickableRow("Terms of Service") { showTermsDialog = true }
                         SettingsClickableRow("Feedback / Contact Developer") {

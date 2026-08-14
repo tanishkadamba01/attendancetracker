@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.attendancetracker.AttendanceApplication
+import com.example.attendancetracker.data.AttendanceCalculations
 import com.example.attendancetracker.data.model.AttendanceRecord
 import com.example.attendancetracker.data.model.AttendanceStatus
 import com.example.attendancetracker.data.model.Subject
@@ -44,8 +45,10 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
             repo.getSubjectDetailedStats(subject.id).map { (total, attended, missed) ->
                 val pct = if (total > 0) attended.toFloat() / total * 100f else 0f
                 val target = subject.targetPercentage
-                val needed = computeNeeded(total, attended, target)
-                val safeSkip = if (needed < 0) -needed else 0
+                val needed = AttendanceCalculations.computeNeeded(total, attended, target)
+                // safeToSkip uses its own formula: A/(T+M) >= P => M = floor(A/P - T)
+                // Only meaningful when current attendance is at or above target.
+                val safeSkip = if (needed <= 0) AttendanceCalculations.computeSafeToSkip(total, attended, target) else 0
 
                 SubjectStats(
                     subject          = subject,
@@ -99,9 +102,5 @@ class StatsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun computeNeeded(total: Int, attended: Int, targetPct: Float): Int {
-        val targetFraction = targetPct / 100f
-        val raw = (targetFraction * total - attended) / (1f - targetFraction)
-        return kotlin.math.ceil(raw).toInt()
-    }
+    // Calculation logic moved to AttendanceCalculations.kt for testability.
 }

@@ -5,7 +5,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 
-enum class AttendanceStatus { PRESENT, ABSENT, REASSIGNED, PENDING }
+enum class AttendanceStatus { PRESENT, ABSENT, REASSIGNED, PENDING, CANCELLED }
 
 @Entity(
     tableName = "attendance_records",

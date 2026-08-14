@@ -96,6 +96,22 @@ import com.example.attendancetracker.theme.Mint
 import com.example.attendancetracker.theme.SubjectColorHexList
 import kotlinx.coroutines.launch
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.FolderOpen
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import com.example.attendancetracker.data.timetable.TimetableSerializer
+
 private val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat")
 private val DAY_FULL  = listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
 
@@ -113,7 +129,59 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
     var showAddSlotDialog    by remember { mutableStateOf(false) }
     var showExportDialog     by remember { mutableStateOf(false) }
     var showImportDialog     by remember { mutableStateOf(false) }
-    var exportedJson         by remember { mutableStateOf("") }
+
+    var exportIsTemplate     by remember { mutableStateOf(false) }
+    var pendingImportParsed  by remember { mutableStateOf<TimetableSerializer.ParsedTimetable?>(null) }
+    var pendingImportFileName by remember { mutableStateOf<String?>(null) }
+
+    // SAF Launcher: Export .json file
+    val exportFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri ->
+        if (uri != null) {
+            vm.exportToUri(context, uri, exportIsTemplate) { result ->
+                when (result) {
+                    is ImportExportResult.Success -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_SHORT).show()
+                        showExportDialog = false
+                    }
+                    is ImportExportResult.Error -> {
+                        Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
+
+    // SAF Launcher: Import .json file
+    val importFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            // Get display name if possible
+            val cursor = context.contentResolver.query(uri, null, null, null, null)
+            val name = cursor?.use {
+                if (it.moveToFirst()) {
+                    val nameIdx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (nameIdx >= 0) it.getString(nameIdx) else null
+                } else null
+            } ?: "selected_timetable.json"
+            pendingImportFileName = name
+
+            vm.readTimetableFromUri(context, uri) { parseResult ->
+                when (parseResult) {
+                    is TimetableSerializer.ParseResult.Success -> {
+                        pendingImportParsed = parseResult.data
+                    }
+                    is TimetableSerializer.ParseResult.Error -> {
+                        pendingImportParsed = null
+                        pendingImportFileName = null
+                        Toast.makeText(context, parseResult.message, Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+    }
 
     if (showAddSubjectDialog) {
         AddSubjectDialog(
@@ -160,24 +228,45 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
 
     if (showExportDialog) {
         ExportTimetableDialog(
-            jsonText  = exportedJson,
-            onDismiss = { showExportDialog = false }
+            vm = vm,
+            onDismiss = { showExportDialog = false },
+            onSaveAsFile = { isTemplate ->
+                exportIsTemplate = isTemplate
+                val fileName = vm.generateExportFileName(isTemplate)
+                exportFileLauncher.launch(fileName)
+            }
         )
     }
 
     if (showImportDialog) {
         ImportTimetableDialog(
-            initialStartDate     = state.startDate,
+            vm = vm,
+            initialStartDate = state.startDate,
             hasExistingTimetable = state.allSubjects.isNotEmpty(),
-            onDismiss            = { showImportDialog = false },
-            onImport             = { jsonText, replace, selectedStart ->
+            pickedParsedData = pendingImportParsed,
+            pickedFileName = pendingImportFileName,
+            onPickFile = {
+                importFileLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+            },
+            onClearPickedFile = {
+                pendingImportParsed = null
+                pendingImportFileName = null
+            },
+            onDismiss = {
+                showImportDialog = false
+                pendingImportParsed = null
+                pendingImportFileName = null
+            },
+            onApplyImport = { parsed, replace, selectedStart ->
                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 scope.launch {
-                    val result = vm.importTimetableJson(jsonText, replace, selectedStart)
+                    val result = vm.applyParsedTimetable(parsed, replace, selectedStart)
                     when (result) {
                         is ImportExportResult.Success -> {
                             Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
                             showImportDialog = false
+                            pendingImportParsed = null
+                            pendingImportFileName = null
                         }
                         is ImportExportResult.Error -> {
                             Toast.makeText(context, result.message, Toast.LENGTH_LONG).show()
@@ -212,10 +301,7 @@ fun TimetableScreen(modifier: Modifier = Modifier) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 IconButton(onClick = {
                     haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    scope.launch {
-                        exportedJson = vm.exportTimetableJson()
-                        showExportDialog = true
-                    }
+                    showExportDialog = true
                 }) {
                     Icon(Icons.Default.FileUpload, contentDescription = "Export", tint = Indigo60)
                 }
@@ -874,39 +960,214 @@ private fun EditSubjectDialog(
 // ── Export / Import Timetable Dialogs ────────────────────────────────────────
 
 @Composable
-private fun ExportTimetableDialog(jsonText: String, onDismiss: () -> Unit) {
+private fun ExportTimetableDialog(
+    vm: TimetableViewModel,
+    onDismiss: () -> Unit,
+    onSaveAsFile: (isTemplate: Boolean) -> Unit
+) {
     val context = LocalContext.current
+    var isTemplateMode by remember { mutableStateOf(false) }
+    var displayedJson by remember { mutableStateOf("") }
+    var isLoading by remember { mutableStateOf(true) }
+
+    androidx.compose.runtime.LaunchedEffect(isTemplateMode) {
+        isLoading = true
+        displayedJson = vm.exportTimetableJson(isTemplateMode)
+        isLoading = false
+    }
+
     Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Export Timetable (AI Compatible)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Box(
-                    modifier = Modifier.fillMaxWidth().height(200.dp).clip(RoundedCornerShape(12.dp))
-                        .background(MaterialTheme.colorScheme.surface).border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp)).padding(12.dp).verticalScroll(rememberScrollState())
+        Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(jsonText, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = Mint)
+                    Column {
+                        Text(
+                            text = "Export Schedule",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Save as JSON file or AI prompt",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.FileUpload,
+                        contentDescription = null,
+                        tint = Indigo60,
+                        modifier = Modifier.size(24.dp)
+                    )
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    Button(
+
+                // Mode Selector Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = !isTemplateMode,
+                        onClick = { isTemplateMode = false },
+                        label = { Text("My Schedule") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.AccessTime,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Indigo60,
+                            selectedLabelColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                    FilterChip(
+                        selected = isTemplateMode,
+                        onClick = { isTemplateMode = true },
+                        label = { Text("AI Template") },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = Indigo60,
+                            selectedLabelColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                // AI Guide Notice
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isTemplateMode) Indigo60.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(1.dp, if (isTemplateMode) Indigo60.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            if (isTemplateMode) Icons.Default.AutoAwesome else Icons.Default.Info,
+                            contentDescription = null,
+                            tint = if (isTemplateMode) Indigo60 else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (isTemplateMode) {
+                                "Tip: Give this template to ChatGPT / Gemini / Claude with a timetable image to generate your timetable JSON."
+                            } else {
+                                "Exports your current schedule with subjects and class slots in standard JSON format."
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                // JSON Code Box
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(12.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.Center).size(24.dp),
+                            color = Indigo60,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text(
+                            text = displayedJson,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.5.sp,
+                            color = Mint,
+                            lineHeight = 15.sp
+                        )
+                    }
+                }
+
+                // Action Buttons
+                Button(
+                    onClick = { onSaveAsFile(isTemplateMode) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text(if (isTemplateMode) "Save AI Template (.json)" else "Save Schedule (.json)")
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
                         onClick = {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Timetable JSON", jsonText))
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Timetable JSON", displayedJson))
                             Toast.makeText(context, "Copied JSON to clipboard!", Toast.LENGTH_SHORT).show()
                         },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Copy JSON", fontSize = 12.sp) }
-                    Button(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Copy", fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
                         onClick = {
                             val intent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, jsonText)
+                                putExtra(Intent.EXTRA_TEXT, displayedJson)
                             }
                             context.startActivity(Intent.createChooser(intent, "Share Timetable JSON"))
                         },
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Share Text", fontSize = 12.sp) }
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("Share", fontSize = 12.sp)
+                    }
                 }
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Close") }
+
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Text("Close")
+                }
             }
         }
     }
@@ -914,20 +1175,240 @@ private fun ExportTimetableDialog(jsonText: String, onDismiss: () -> Unit) {
 
 @Composable
 private fun ImportTimetableDialog(
+    vm: TimetableViewModel,
     initialStartDate: LocalDate?,
     hasExistingTimetable: Boolean,
+    pickedParsedData: TimetableSerializer.ParsedTimetable?,
+    pickedFileName: String?,
+    onPickFile: () -> Unit,
+    onClearPickedFile: () -> Unit,
     onDismiss: () -> Unit,
-    onImport: (jsonText: String, replace: Boolean, startDate: LocalDate) -> Unit
+    onApplyImport: (parsed: TimetableSerializer.ParsedTimetable, replace: Boolean, startDate: LocalDate) -> Unit
 ) {
-    var jsonInput by remember { mutableStateOf("") }
-    var selectedStartDate by remember { mutableStateOf(initialStartDate ?: LocalDate.now()) }
     val context = LocalContext.current
+    var showPasteSection by remember { mutableStateOf(false) }
+    var pastedJsonText by remember { mutableStateOf("") }
+    var manualParsedData by remember { mutableStateOf<TimetableSerializer.ParsedTimetable?>(null) }
+    var parseError by remember { mutableStateOf<String?>(null) }
+
+    var replaceExisting by remember { mutableStateOf(hasExistingTimetable) }
+    var selectedStartDate by remember { mutableStateOf(initialStartDate ?: LocalDate.now()) }
     val dateFmt = DateTimeFormatter.ofPattern("dd MMM yyyy")
 
+    // Active parsed data (from file picker or from pasted text)
+    val activeParsed = pickedParsedData ?: manualParsedData
+
+    // Auto-update start date if parsed JSON has it
+    androidx.compose.runtime.LaunchedEffect(activeParsed?.classStartDate) {
+        if (activeParsed?.classStartDate != null) {
+            selectedStartDate = activeParsed.classStartDate
+        }
+    }
+
+    // Re-parse when pasted text changes
+    androidx.compose.runtime.LaunchedEffect(pastedJsonText) {
+        if (pastedJsonText.isNotBlank()) {
+            when (val res = vm.parseTimetableText(pastedJsonText)) {
+                is TimetableSerializer.ParseResult.Success -> {
+                    manualParsedData = res.data
+                    parseError = null
+                }
+                is TimetableSerializer.ParseResult.Error -> {
+                    manualParsedData = null
+                    parseError = res.message
+                }
+            }
+        } else {
+            manualParsedData = null
+            parseError = null
+        }
+    }
+
     Dialog(onDismissRequest = onDismiss) {
-        Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)) {
-            Column(modifier = Modifier.padding(20.dp).verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                Text("Import Timetable", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+        Card(
+            shape = RoundedCornerShape(22.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "Import Timetable",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onBackground
+                        )
+                        Text(
+                            text = "Load from JSON file or AI result",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        Icons.Default.FileDownload,
+                        contentDescription = null,
+                        tint = Mint,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+
+                // File Selection Card (Primary option)
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onPickFile() },
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (pickedFileName != null) Mint.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(
+                        1.5.dp,
+                        if (pickedFileName != null) Mint else Indigo60.copy(alpha = 0.5f)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(if (pickedFileName != null) Mint.copy(alpha = 0.2f) else Indigo60.copy(alpha = 0.15f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (pickedFileName != null) Icons.Default.CheckCircle else Icons.Default.FolderOpen,
+                                contentDescription = null,
+                                tint = if (pickedFileName != null) Mint else Indigo60,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (pickedFileName != null) pickedFileName else "Select .json File",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                text = if (pickedFileName != null) "File loaded successfully (Tap to change)" else "Choose timetable JSON file from storage",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                // Toggle for pasting JSON manually
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showPasteSection = !showPasteSection },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = if (showPasteSection) "▼ Hide Paste Option" else "▶ Or Paste JSON Text Directly",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = Indigo60,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+
+                AnimatedVisibility(visible = showPasteSection) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        OutlinedTextField(
+                            value = pastedJsonText,
+                            onValueChange = {
+                                onClearPickedFile()
+                                pastedJsonText = it
+                            },
+                            label = { Text("Paste JSON Text Here") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(140.dp),
+                            maxLines = 8,
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        )
+                        if (parseError != null) {
+                            Text(
+                                text = "⚠️ $parseError",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Coral,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                // Live Preview Card if data is recognized
+                if (activeParsed != null) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, Mint.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Mint, modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = "Ready to Import",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Mint
+                                )
+                            }
+
+                            Text(
+                                text = "• ${activeParsed.subjects.size} subjects found: " +
+                                        activeParsed.subjects.take(4).joinToString(", ") { it.name } +
+                                        if (activeParsed.subjects.size > 4) " (+${activeParsed.subjects.size - 4} more)" else "",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            Text(
+                                text = "• ${activeParsed.slots.size} class slots scheduled across the week",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (activeParsed.classStartDate != null) {
+                                Text(
+                                    text = "• Class Start Date: ${activeParsed.classStartDate.format(dateFmt)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Indigo60
+                                )
+                            }
+                        }
+                    }
+                }
 
                 // Class Start Date Picker Section
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -950,7 +1431,7 @@ private fun ImportTimetableDialog(
                                 ).show()
                             }
                             .padding(12.dp),
-                        verticalAlignment     = Alignment.CenterVertically,
+                        verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -961,20 +1442,55 @@ private fun ImportTimetableDialog(
                     }
                 }
 
-                OutlinedTextField(
-                    value = jsonInput,
-                    onValueChange = { jsonInput = it },
-                    label = { Text("Paste JSON Content Here") },
-                    modifier = Modifier.fillMaxWidth().height(160.dp),
-                    maxLines = 10
-                )
+                // Replace vs Merge Option (if user has existing timetable)
+                if (hasExistingTimetable) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { replaceExisting = !replaceExisting }
+                            .padding(vertical = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Checkbox(
+                            checked = replaceExisting,
+                            onCheckedChange = { replaceExisting = it },
+                            colors = CheckboxDefaults.colors(checkedColor = Indigo60)
+                        )
+                        Column {
+                            Text(
+                                "Replace existing timetable",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onBackground
+                            )
+                            Text(
+                                if (replaceExisting) "Clears current timetable and replaces with imported schedule" else "Merges imported subjects and slots with current timetable",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+                }
+
+                // Actions
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f), shape = RoundedCornerShape(12.dp)) {
+                        Text("Cancel")
+                    }
                     Button(
-                        onClick = { if (jsonInput.isNotBlank()) onImport(jsonInput.trim(), hasExistingTimetable, selectedStartDate) },
-                        enabled = jsonInput.isNotBlank(),
-                        modifier = Modifier.weight(1f)
-                    ) { Text("Import") }
+                        onClick = {
+                            if (activeParsed != null) {
+                                onApplyImport(activeParsed, replaceExisting, selectedStartDate)
+                            }
+                        },
+                        enabled = activeParsed != null,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("Import")
+                    }
                 }
             }
         }

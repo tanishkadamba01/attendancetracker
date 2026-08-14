@@ -50,4 +50,10 @@ class ThemePreferences(context: Context) {
         prefs.edit().putFloat("default_target", target).apply()
         _defaultTarget.value = target
     }
+
+    fun getLastSundayPromptDate(): String? = prefs.getString("last_sunday_update_prompt_date", null)
+
+    fun setLastSundayPromptDate(dateStr: String) {
+        prefs.edit().putString("last_sunday_update_prompt_date", dateStr).apply()
+    }
 }
