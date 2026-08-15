@@ -12,8 +12,8 @@ android {
         applicationId = "com.example.attendancetracker"
         minSdk = 24
         targetSdk = 36
-        versionCode = 3
-        versionName = "1.0.2-alpha"
+        versionCode = 4
+        versionName = "1.0.3-alpha"
         buildConfigField("String", "RELEASE_TYPE", "\"Alpha\"")
     }
 
