@@ -1,7 +1,8 @@
-﻿package com.example.attendancetracker.ui.settings
+package com.example.attendancetracker.ui.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -56,6 +58,8 @@ import com.example.attendancetracker.theme.Mint
 fun AboutScreen(
     onBack: () -> Unit
 ) {
+    BackHandler(onBack = onBack)
+
     val context = LocalContext.current
     val versionName = BuildConfig.VERSION_NAME
     val versionCode = BuildConfig.VERSION_CODE
@@ -71,6 +75,7 @@ fun AboutScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
     ) {
         // ── Top App Bar ───────────────────────────────────────────────────────
         Row(

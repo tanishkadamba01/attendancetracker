@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -260,7 +261,12 @@ fun SettingsScreen(
         return
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding()
+    ) {
         // Top App Bar
         Row(
             modifier          = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp),
@@ -432,7 +438,8 @@ fun SettingsScreen(
                         SettingsClickableRow("Privacy Policy") { showPrivacyDialog = true }
                         SettingsClickableRow("Terms of Service") { showTermsDialog = true }
                         SettingsClickableRow("Feedback / Contact Developer") {
-                            Toast.makeText(context, "Contact developer@example.com", Toast.LENGTH_LONG).show()
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://forms.gle/fMar9zA4uathaSJi6"))
+                            context.startActivity(intent)
                         }
                         SettingsClickableRow("Rate App") {
                             Toast.makeText(context, "Thank you for rating!", Toast.LENGTH_SHORT).show()
