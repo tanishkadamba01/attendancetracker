@@ -5,6 +5,33 @@ plugins {
   alias(libs.plugins.ksp)
 }
 
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.Properties
+
+val autoBuildNumber: Int by lazy {
+    val versionPropsFile = file("version.properties")
+    val versionProps = Properties()
+
+    if (versionPropsFile.exists()) {
+        FileInputStream(versionPropsFile).use { versionProps.load(it) }
+    }
+
+    val currentBuild = versionProps.getProperty("build_number", "5").toIntOrNull() ?: 5
+    val isBuildingApp = gradle.startParameter.taskNames.any {
+        it.contains("assemble", ignoreCase = true) || it.contains("bundle", ignoreCase = true) || it.contains("build", ignoreCase = true)
+    }
+
+    val nextBuild = if (isBuildingApp) currentBuild + 1 else currentBuild
+
+    if (isBuildingApp) {
+        versionProps.setProperty("build_number", nextBuild.toString())
+        FileOutputStream(versionPropsFile).use { versionProps.store(it, "Auto-generated build number") }
+    }
+
+    nextBuild
+}
+
 android {
     namespace = "com.example.attendancetracker"
     compileSdk = 36
@@ -12,8 +39,8 @@ android {
         applicationId = "com.example.attendancetracker"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.0.3-alpha"
+        versionCode = autoBuildNumber
+        versionName = "1.0.4-alpha"
         buildConfigField("String", "RELEASE_TYPE", "\"Alpha\"")
     }
 
@@ -90,4 +117,7 @@ dependencies {
   implementation(libs.androidx.room.runtime)
   implementation(libs.androidx.room.ktx)
   ksp(libs.androidx.room.compiler)
+
+  // WorkManager
+  implementation("androidx.work:work-runtime-ktx:2.10.0")
 }

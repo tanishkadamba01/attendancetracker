@@ -159,10 +159,24 @@ class HomeViewModel(application: Application) : AndroidViewModel(application) {
         setDate(_selectedDate.value.plusWeeks(1))
     }
 
-    fun toggleMissed(slotId: Int, isCurrentlyMissed: Boolean) {
+    /**
+     * Toggle the missed/attended state of a slot, correctly handling all source states.
+     *
+     * Transitions:
+     *  - Any status except ABSENT  →  ABSENT  (mark as missed; override cleared by repository guard)
+     *  - ABSENT                    →  PRESENT (mark as attended / un-miss)
+     *
+     * Receiving the full [currentStatus] (instead of a derived boolean) means the transition is
+     * unambiguous regardless of whether the slot is currently REASSIGNED, PRESENT, PENDING, etc.
+     */
+    fun toggleMissed(slotId: Int, currentStatus: AttendanceStatus?) {
         viewModelScope.launch {
             val dateStr = _selectedDate.value.format(fmt)
-            val newStatus = if (isCurrentlyMissed) AttendanceStatus.PRESENT else AttendanceStatus.ABSENT
+            val newStatus = if (currentStatus == AttendanceStatus.ABSENT) {
+                AttendanceStatus.PRESENT   // un-miss → restore to attended
+            } else {
+                AttendanceStatus.ABSENT    // mark missed (clears any reassignment via repo guard)
+            }
             repo.markAttendance(slotId, dateStr, newStatus)
         }
     }

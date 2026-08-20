@@ -56,4 +56,36 @@ class ThemePreferences(context: Context) {
     fun setLastSundayPromptDate(dateStr: String) {
         prefs.edit().putString("last_sunday_update_prompt_date", dateStr).apply()
     }
+
+    // Onboarding
+    private val _onboardingCompleted = MutableStateFlow(prefs.getBoolean("onboarding_completed", false))
+    val onboardingCompleted: StateFlow<Boolean> = _onboardingCompleted
+
+    fun isOnboardingCompleted(): Boolean = prefs.getBoolean("onboarding_completed", false)
+
+    fun setOnboardingCompleted(completed: Boolean) {
+        prefs.edit().putBoolean("onboarding_completed", completed).apply()
+        _onboardingCompleted.value = completed
+    }
+
+    // Attendance Reminders
+    private val _reminderEnabled = MutableStateFlow(prefs.getBoolean("reminder_enabled", true))
+    val reminderEnabled: StateFlow<Boolean> = _reminderEnabled
+
+    private val _reminderTime = MutableStateFlow(prefs.getString("reminder_time", "20:00") ?: "20:00")
+    val reminderTime: StateFlow<String> = _reminderTime
+
+    fun setReminderEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("reminder_enabled", enabled).apply()
+        _reminderEnabled.value = enabled
+    }
+
+    fun setReminderTime(time24h: String) {
+        prefs.edit().putString("reminder_time", time24h).apply()
+        _reminderTime.value = time24h
+    }
+
+    // Auto Mark Time (defaults to 17:00 / 5:00 PM)
+    private val _autoMarkTime = MutableStateFlow(prefs.getString("auto_mark_time", "17:00") ?: "17:00")
+    val autoMarkTime: StateFlow<String> = _autoMarkTime
 }

@@ -40,15 +40,35 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
     private val repo = app.repository
     private val themePrefs = app.themePreferences
 
-    val uiState: StateFlow<SettingsUiState> = combine(
+    private val basicPrefsFlow = combine(
         themePrefs.themeMode,
         themePrefs.defaultTarget,
         themePrefs.startDate
     ) { mode, target, start ->
+        Triple(mode, target, start)
+    }
+
+    private val reminderPrefsFlow = combine(
+        themePrefs.reminderEnabled,
+        themePrefs.reminderTime,
+        themePrefs.autoMarkTime
+    ) { remEnabled, remTime, autoMark ->
+        Triple(remEnabled, remTime, autoMark)
+    }
+
+    val uiState: StateFlow<SettingsUiState> = combine(
+        basicPrefsFlow,
+        reminderPrefsFlow
+    ) { (mode, target, start), (remEnabled, remTime, autoMark) ->
+        val formattedReminderTime = formatTimeForDisplay(remTime)
+        val formattedAutoMarkTime = formatTimeForDisplay(autoMark)
         SettingsUiState(
-            themeMode     = mode,
-            defaultTarget = target,
-            startDate     = start
+            themeMode         = mode,
+            defaultTarget     = target,
+            startDate         = start,
+            isReminderEnabled = remEnabled,
+            reminderTime      = formattedReminderTime,
+            autoMarkTime      = formattedAutoMarkTime
         )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SettingsUiState())
 
@@ -67,11 +87,57 @@ class SettingsViewModel(application: Application) : AndroidViewModel(application
         themePrefs.setStartDate(date)
     }
 
+    fun setReminderEnabled(enabled: Boolean, context: Context) {
+        themePrefs.setReminderEnabled(enabled)
+        if (enabled) {
+            val time = themePrefs.reminderTime.value
+            com.example.attendancetracker.data.work.ReminderScheduler.scheduleDaily(context, time)
+        } else {
+            com.example.attendancetracker.data.work.ReminderScheduler.cancel(context)
+        }
+    }
+
+    fun setReminderTime(hour: Int, minute: Int, context: Context) {
+        val time24h = "%02d:%02d".format(hour, minute)
+        themePrefs.setReminderTime(time24h)
+        if (themePrefs.reminderEnabled.value) {
+            com.example.attendancetracker.data.work.ReminderScheduler.scheduleDaily(context, time24h)
+        }
+    }
+
+    fun getRawReminderTime(): Pair<Int, Int> {
+        val raw = themePrefs.reminderTime.value
+        return try {
+            val parts = raw.split(":")
+            Pair(parts[0].toInt(), parts[1].toInt())
+        } catch (e: Exception) {
+            Pair(20, 0)
+        }
+    }
+
+    fun resetOnboarding(onComplete: () -> Unit) {
+        themePrefs.setOnboardingCompleted(false)
+        onComplete()
+    }
+
     fun resetAllData(onComplete: () -> Unit) {
         viewModelScope.launch {
             repo.deleteAllData()
             themePrefs.setStartDate(null)
             onComplete()
+        }
+    }
+
+    private fun formatTimeForDisplay(time24h: String): String {
+        return try {
+            val parts = time24h.split(":")
+            val h = parts[0].toInt()
+            val m = parts[1].toInt()
+            val amPm = if (h >= 12) "PM" else "AM"
+            val h12 = if (h == 0) 12 else if (h > 12) h - 12 else h
+            "%d:%02d %s".format(h12, m, amPm)
+        } catch (e: Exception) {
+            time24h
         }
     }
 

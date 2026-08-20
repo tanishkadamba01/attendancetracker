@@ -1,4 +1,4 @@
-﻿package com.example.attendancetracker
+package com.example.attendancetracker
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
@@ -67,6 +67,7 @@ fun MainNavigation() {
     val context = LocalContext.current
     val app = context.applicationContext as AttendanceApplication
     val themeMode by app.themePreferences.themeMode.collectAsStateWithLifecycle()
+    val onboardingCompleted by app.themePreferences.onboardingCompleted.collectAsStateWithLifecycle()
 
     var selectedTab    by remember { mutableIntStateOf(0) }
     var showSettings   by remember { mutableStateOf(false) }
@@ -78,6 +79,10 @@ fun MainNavigation() {
             showSettings = false
             selectedTab  = 0
         }
+    } else if (!onboardingCompleted) {
+        BackHandler {
+            app.themePreferences.setOnboardingCompleted(true)
+        }
     } else {
         BackHandler {
             showExitDialog = true
@@ -85,75 +90,85 @@ fun MainNavigation() {
     }
 
     AttendanceTrackerTheme(mode = themeMode) {
-        if (showExitDialog) {
-            ExitAppDialog(
-                onDismiss = { showExitDialog = false },
-                onExit    = {
-                    showExitDialog = false
-                    (context as? Activity)?.finish()
-                }
-            )
-        }
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (showExitDialog) {
+                ExitAppDialog(
+                    onDismiss = { showExitDialog = false },
+                    onExit    = {
+                        showExitDialog = false
+                        (context as? Activity)?.finish()
+                    }
+                )
+            }
 
-        if (showSettings) {
-            SettingsScreen(
-                onBack = {
-                    showSettings = false
-                    selectedTab  = 0
-                }
-            )
-        } else {
-            Scaffold(
-                bottomBar = {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        tonalElevation = androidx.compose.ui.unit.Dp.Unspecified
-                    ) {
-                        navItems.forEachIndexed { idx, item ->
-                            val isSelected = idx == selectedTab
-                            NavigationBarItem(
-                                selected = isSelected,
-                                onClick  = { selectedTab = idx },
-                                icon     = {
-                                    Icon(
-                                        imageVector        = item.icon,
-                                        contentDescription = item.label
+            if (showSettings) {
+                SettingsScreen(
+                    onBack = {
+                        showSettings = false
+                        selectedTab  = 0
+                    }
+                )
+            } else {
+                Scaffold(
+                    bottomBar = {
+                        NavigationBar(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            tonalElevation = androidx.compose.ui.unit.Dp.Unspecified
+                        ) {
+                            navItems.forEachIndexed { idx, item ->
+                                val isSelected = idx == selectedTab
+                                NavigationBarItem(
+                                    selected = isSelected,
+                                    onClick  = { selectedTab = idx },
+                                    icon     = {
+                                        Icon(
+                                            imageVector        = item.icon,
+                                            contentDescription = item.label
+                                        )
+                                    },
+                                    label    = {
+                                        Text(
+                                            text       = item.label,
+                                            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
+                                        )
+                                    },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor   = Indigo60,
+                                        selectedTextColor   = Indigo60,
+                                        indicatorColor      = Indigo60.copy(alpha = 0.18f),
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
-                                },
-                                label    = {
-                                    Text(
-                                        text       = item.label,
-                                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor   = Indigo60,
-                                    selectedTextColor   = Indigo60,
-                                    indicatorColor      = Indigo60.copy(alpha = 0.18f),
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                            )
+                            }
                         }
-                    }
-                },
-                containerColor = MaterialTheme.colorScheme.background
-            ) { innerPadding ->
-                Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
-                    AnimatedContent(
-                        targetState = selectedTab,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(250)) togetherWith fadeOut(animationSpec = tween(200))
-                        },
-                        label = "tab_switch"
-                    ) { targetTab ->
-                        when (targetTab) {
-                            0 -> HomeScreen(onOpenSettings = { showSettings = true })
-                            1 -> TimetableScreen()
-                            2 -> StatsScreen()
+                    },
+                    containerColor = MaterialTheme.colorScheme.background
+                ) { innerPadding ->
+                    Box(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
+                        AnimatedContent(
+                            targetState = selectedTab,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(250)) togetherWith fadeOut(animationSpec = tween(200))
+                            },
+                            label = "tab_switch"
+                        ) { targetTab ->
+                            when (targetTab) {
+                                0 -> HomeScreen(onOpenSettings = { showSettings = true })
+                                1 -> TimetableScreen()
+                                2 -> StatsScreen()
+                            }
                         }
                     }
                 }
+            }
+
+            // Interactive Onboarding Tutorial Overlay
+            if (!onboardingCompleted && !showSettings) {
+                com.example.attendancetracker.ui.onboarding.TutorialOverlay(
+                    onNavigateTab = { tabIndex -> selectedTab = tabIndex },
+                    onDismiss = { app.themePreferences.setOnboardingCompleted(true) }
+                )
             }
         }
     }

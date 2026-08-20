@@ -160,9 +160,9 @@ fun HomeScreen(
                         allSubjects       = state.allSubjects,
                         isAfter5PM        = state.isAfter5PM,
                         isBeforeStart     = state.isBeforeStartDate,
-                        onToggleMissed    = { isMissed ->
+                        onToggleMissed    = { currentStatus ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                            vm.toggleMissed(swd.slot.id, isMissed)
+                            vm.toggleMissed(swd.slot.id, currentStatus)
                         },
                         onToggleCancelled = { isCancelled ->
                             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -393,7 +393,7 @@ private fun ClassCard(
     allSubjects: List<Subject>,
     isAfter5PM: Boolean,
     isBeforeStart: Boolean,
-    onToggleMissed: (Boolean) -> Unit,
+    onToggleMissed: (AttendanceStatus?) -> Unit,
     onToggleCancelled: (Boolean) -> Unit,
     onReassign: (Int) -> Unit,
     onRevert: () -> Unit
@@ -405,7 +405,11 @@ private fun ClassCard(
     val isMissed        = swd.record?.status == AttendanceStatus.ABSENT
     val isExplicitPresent = swd.record?.status == AttendanceStatus.PRESENT
 
-    val activeSubject = if (isReassigned) overrideSubject else originalSubject
+    val activeSubject = when {
+        isReassigned                           -> overrideSubject  // REASSIGNED: show override
+        isMissed && overrideSubject != null    -> overrideSubject  // ABSENT from REASSIGNED: still show override
+        else                                   -> originalSubject
+    }
     val subjectColor = try {
         Color(android.graphics.Color.parseColor(activeSubject?.colorHex ?: "#6650A4"))
     } catch (e: Exception) { Indigo60 }
@@ -443,7 +447,7 @@ private fun ClassCard(
                 Spacer(modifier = Modifier.width(14.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text       = originalSubject?.name ?: "Unknown Subject",
+                        text       = activeSubject?.name ?: "Unknown Subject",
                         style      = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.Bold,
                         color      = if (isCancelled) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onBackground
@@ -481,7 +485,7 @@ private fun ClassCard(
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (isMissed) Coral.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surface)
                         .border(1.dp, if (isMissed) Coral else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                        .clickable { onToggleMissed(isMissed) }
+                        .clickable { onToggleMissed(swd.record?.status) }
                         .padding(vertical = 9.dp),
                     contentAlignment = Alignment.Center
                 ) {

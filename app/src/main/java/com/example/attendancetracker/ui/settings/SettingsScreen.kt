@@ -45,6 +45,8 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -348,7 +350,46 @@ fun SettingsScreen(
                         }
                         HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                         SettingsRow("Auto Mark Time", state.autoMarkTime)
-                        SettingsRow("Reminders", "Enabled (8:00 PM)")
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                        
+                        // Dynamic Reminders toggle & time picker
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Daily Reminder", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+                                Text("Remind me before auto-mark", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Switch(
+                                checked = state.isReminderEnabled,
+                                onCheckedChange = { enabled ->
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    vm.setReminderEnabled(enabled, context)
+                                },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Indigo60,
+                                    checkedTrackColor = Indigo60.copy(alpha = 0.3f)
+                                )
+                            )
+                        }
+
+                        if (state.isReminderEnabled) {
+                            SettingsClickableRow("Reminder Time: ${state.reminderTime}") {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                val (h, m) = vm.getRawReminderTime()
+                                android.app.TimePickerDialog(
+                                    context,
+                                    { _, selectedHour, selectedMinute ->
+                                        vm.setReminderTime(selectedHour, selectedMinute, context)
+                                    },
+                                    h,
+                                    m,
+                                    false
+                                ).show()
+                            }
+                        }
                     }
                 }
             }
@@ -431,6 +472,12 @@ fun SettingsScreen(
                 SettingsCategoryCard(title = "General", icon = Icons.Default.Info) {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         SettingsClickableRow("About Attendance Tracker") { showAboutScreen = true }
+                        SettingsClickableRow("Replay App Tutorial") {
+                            vm.resetOnboarding {
+                                Toast.makeText(context, "Tutorial reset! Returning to Home...", Toast.LENGTH_SHORT).show()
+                                onBack()
+                            }
+                        }
                         SettingsClickableRow("Official Website (theattendancetracker.vercel.app)") {
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://theattendancetracker.vercel.app"))
                             context.startActivity(intent)

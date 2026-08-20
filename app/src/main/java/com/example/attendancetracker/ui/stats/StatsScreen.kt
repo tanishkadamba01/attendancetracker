@@ -29,12 +29,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -73,6 +77,7 @@ fun StatsScreen(modifier: Modifier = Modifier) {
     val haptic = LocalHapticFeedback.current
 
     var selectedSubjectForDetails by remember { mutableStateOf<SubjectStats?>(null) }
+    var selectedStatsTab by remember { mutableStateOf(0) } // 0 = Overview, 1 = Calendar
 
     if (selectedSubjectForDetails != null) {
         SubjectDetailScreen(
@@ -81,60 +86,120 @@ fun StatsScreen(modifier: Modifier = Modifier) {
             onBack = { selectedSubjectForDetails = null }
         )
     } else {
-        LazyColumn(
-            modifier            = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
-            contentPadding      = PaddingValues(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
-            // Header
-            item {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(
-                            Brush.verticalGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.surface,
-                                    MaterialTheme.colorScheme.background
-                                )
+            // Header with Segmented Tab Control
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.surface,
+                                MaterialTheme.colorScheme.background
                             )
                         )
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text       = "Subject Statistics",
-                        style      = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color      = MaterialTheme.colorScheme.onBackground
                     )
-                    Text(
-                        text  = "Track individual performance per subject",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text       = if (selectedStatsTab == 0) "Subject Statistics" else "Attendance Calendar",
+                    style      = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color      = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text  = if (selectedStatsTab == 0) "Track individual performance per subject" else "Daily attendance history and timeline",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
 
-            // Subject-wise performance cards
-            if (subjectStats.isNotEmpty()) {
-                items(subjectStats, key = { it.subject.id }) { ss ->
-                    AnimatedVisibility(
-                        visible = true,
-                        enter   = fadeIn(tween(300)) + slideInVertically(tween(300))
-                    ) {
-                        SubjectStatCard(
-                            ss      = ss,
-                            onClick = {
+                // Segmented Tab Selector
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .padding(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val isOverview = selectedStatsTab == 0
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isOverview) Indigo60 else Color.Transparent)
+                            .clickable {
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                selectedSubjectForDetails = ss
+                                selectedStatsTab = 0
                             }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Overview",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isOverview) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isOverview) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    val isCalendar = selectedStatsTab == 1
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (isCalendar) Indigo60 else Color.Transparent)
+                            .clickable {
+                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                selectedStatsTab = 1
+                            }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "Calendar",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = if (isCalendar) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isCalendar) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
-            } else {
-                item {
-                    EngagingStatsEmptyState()
+            }
+
+            if (selectedStatsTab == 0) {
+                LazyColumn(
+                    modifier            = Modifier.fillMaxSize(),
+                    contentPadding      = PaddingValues(bottom = 32.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (subjectStats.isNotEmpty()) {
+                        items(subjectStats, key = { it.subject.id }) { ss ->
+                            AnimatedVisibility(
+                                visible = true,
+                                enter   = fadeIn(tween(300)) + slideInVertically(tween(300))
+                            ) {
+                                SubjectStatCard(
+                                    ss      = ss,
+                                    onClick = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        selectedSubjectForDetails = ss
+                                    }
+                                )
+                            }
+                        }
+                    } else {
+                        item {
+                            EngagingStatsEmptyState()
+                        }
+                    }
                 }
+            } else {
+                CalendarScreen(vm = vm)
             }
         }
     }
@@ -388,6 +453,16 @@ private fun SubjectDetailScreen(
                 }
             }
 
+            // Attendance Predictions & What-If Planner
+            item {
+                AttendancePredictionCard(
+                    currentTotal = ss.total,
+                    currentAttended = ss.attended,
+                    targetPercentage = targetPct,
+                    vm = vm
+                )
+            }
+
             // Attendance History Log
             item {
                 Text("Attendance History Log", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
@@ -442,5 +517,238 @@ private fun DetailMetric(label: String, value: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = color)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun AttendancePredictionCard(
+    currentTotal: Int,
+    currentAttended: Int,
+    targetPercentage: Float,
+    vm: StatsViewModel
+) {
+    var extraAttended by remember { mutableStateOf(0) }
+    var extraMissed by remember { mutableStateOf(0) }
+    val haptic = LocalHapticFeedback.current
+
+    val projection = remember(currentTotal, currentAttended, targetPercentage, extraAttended, extraMissed) {
+        vm.calculateProjection(
+            currentTotal     = currentTotal,
+            currentAttended  = currentAttended,
+            targetPercentage = targetPercentage,
+            extraAttended    = extraAttended,
+            extraMissed      = extraMissed
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape    = RoundedCornerShape(20.dp),
+        colors   = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border   = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Attendance Simulator",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        text = "Plan future attendance & test what-if scenarios",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(6.dp))
+                        .background(Indigo60.copy(alpha = 0.15f))
+                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                ) {
+                    Text("PROJECTION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Indigo60)
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+            // Stepper controls
+            PredictionStepper(
+                label = "If I attend next classes",
+                count = extraAttended,
+                color = Mint,
+                onDecrease = {
+                    if (extraAttended > 0) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        extraAttended--
+                    }
+                },
+                onIncrease = {
+                    if (extraAttended < 30) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        extraAttended++
+                    }
+                }
+            )
+
+            PredictionStepper(
+                label = "If I miss next classes",
+                count = extraMissed,
+                color = Coral,
+                onDecrease = {
+                    if (extraMissed > 0) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        extraMissed--
+                    }
+                },
+                onIncrease = {
+                    if (extraMissed < 30) {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        extraMissed++
+                    }
+                }
+            )
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+
+            // Live projected output
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (projection.isTargetMet) Mint.copy(alpha = 0.12f)
+                        else Coral.copy(alpha = 0.12f)
+                    )
+                    .padding(12.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(
+                        text = "Projected Attendance",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = "%.1f%%".format(projection.projectedPercentage),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (projection.isTargetMet) Mint else Coral
+                        )
+                        if (extraAttended > 0 || extraMissed > 0) {
+                            val sign = if (projection.deltaPct >= 0) "+" else ""
+                            Text(
+                                text = "($sign%.1f%%)".format(projection.deltaPct),
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (projection.deltaPct >= 0) Mint else Coral
+                            )
+                        }
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(if (projection.isTargetMet) Mint.copy(alpha = 0.2f) else Coral.copy(alpha = 0.2f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        text = if (projection.isTargetMet) "Target Met (%.0f%%)".format(targetPercentage) else "Below Target",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = if (projection.isTargetMet) Mint else Coral
+                    )
+                }
+            }
+
+            if (extraAttended > 0 || extraMissed > 0) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Text(
+                        text = "Reset Simulation",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Indigo60,
+                        modifier = Modifier
+                            .clickable {
+                                extraAttended = 0
+                                extraMissed = 0
+                            }
+                            .padding(4.dp)
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PredictionStepper(
+    label: String,
+    count: Int,
+    color: Color,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+            Text(label, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+        }
+
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilledTonalIconButton(
+                onClick = onDecrease,
+                enabled = count > 0,
+                modifier = Modifier.size(32.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Icon(Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(16.dp))
+            }
+
+            Text(
+                text = "+$count",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (count > 0) color else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.width(36.dp),
+                textAlign = TextAlign.Center
+            )
+
+            FilledTonalIconButton(
+                onClick = onIncrease,
+                modifier = Modifier.size(32.dp),
+                shape = RoundedCornerShape(8.dp),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(16.dp))
+            }
+        }
     }
 }
