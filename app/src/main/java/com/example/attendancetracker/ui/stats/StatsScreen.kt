@@ -1,5 +1,6 @@
 package com.example.attendancetracker.ui.stats
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
@@ -363,6 +364,8 @@ private fun SubjectDetailScreen(
     vm: StatsViewModel,
     onBack: () -> Unit
 ) {
+    BackHandler(onBack = onBack)
+
     val historyLog by vm.getSubjectHistoryLog(ss.subject.id).collectAsStateWithLifecycle(initialValue = emptyList())
     val color = try { Color(android.graphics.Color.parseColor(ss.subject.colorHex)) } catch (e: Exception) { Indigo60 }
     val targetPct = ss.subject.targetPercentage
@@ -551,32 +554,21 @@ private fun AttendancePredictionCard(
             modifier = Modifier.padding(18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
-                Column {
-                    Text(
-                        text = "Attendance Simulator",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        text = "Plan future attendance & test what-if scenarios",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Indigo60.copy(alpha = 0.15f))
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
-                ) {
-                    Text("PROJECTION", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Indigo60)
-                }
+                Text(
+                    text = "Attendance Simulator",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onBackground
+                )
+                Text(
+                    text = "Plan future attendance & test what-if scenarios",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
@@ -620,7 +612,7 @@ private fun AttendancePredictionCard(
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
 
-            // Live projected output
+            // Live simulated output
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -635,7 +627,7 @@ private fun AttendancePredictionCard(
             ) {
                 Column {
                     Text(
-                        text = "Projected Attendance",
+                        text = "Simulated Attendance",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
