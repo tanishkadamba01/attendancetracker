@@ -6,16 +6,12 @@ A modern, feature-packed Android application built with **Kotlin**, **Jetpack Co
 
 ## ✨ Key Features
 
-- **🗓️ Attendance Calendar & Monthly Timeline**: Full monthly calendar view with color-coded day attendance status indicators (🟢 Attended, 🔴 Missed, ⚪ Cancelled) and class-by-class inspection.
-- **🔮 What-If Attendance Simulator**: Interactive steppers to test future attendance scenarios and preview projected percentages and safe-to-skip margins in real time.
-- **🔔 Daily Attendance Reminders**: Background reminders scheduled via Android WorkManager to remind you to log classes before the 5:00 PM cutoff.
-- **🧭 Interactive In-App Tour**: First-time user onboarding overlay guiding new users through timetable setup, class substitutions, and simulators.
 - **🎓 Class Start Date Control**: Configure the exact day when your classes start. Attendance logging and automated 5:00 PM confirmation rules only kick in from your start day onwards.
 - **🗓️ Dynamic 7-Day Slider**: Home screen displays a Mon–Sun week slider starting strictly from the week of your start date.
 - **⚡ Automated & Manual Attendance Logging**:
   - **5:00 PM Auto-Confirm**: Automatically marks pending classes for the current day as *Attended* after 5:00 PM.
   - **Missed / Attended Toggle**: Easily override any class status with one tap.
-  - **Reassign Class Slot**: Mark a class slot as taken by another subject (*Taken by Another Subject*) when proxy/extra lectures occur.
+  - **Reassign Class Slot**: Mark a class slot as taken by another subject when proxy/extra lectures occur.
 - **📚 Timetable Management & JSON Import/Export**:
   - Add and edit subjects with custom color pickers and target percentages.
   - Full **AI-compatible JSON import and export** for easy schedule sharing and backup.
